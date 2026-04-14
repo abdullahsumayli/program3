@@ -1,13 +1,20 @@
 import OpenAI from "openai";
 
-const client = new OpenAI({
-  apiKey: process.env.OPENROUTER_API_KEY,
-  baseURL: "https://openrouter.ai/api/v1",
-  defaultHeaders: {
-    "HTTP-Referer": "https://meetings.local",
-    "X-Title": "Meeting Assistant",
-  },
-});
+// Lazy-instantiate so module import at build time doesn't require the env var.
+let _client: OpenAI | null = null;
+function getClient(): OpenAI {
+  if (!_client) {
+    _client = new OpenAI({
+      apiKey: process.env.OPENROUTER_API_KEY,
+      baseURL: "https://openrouter.ai/api/v1",
+      defaultHeaders: {
+        "HTTP-Referer": "https://meetings.local",
+        "X-Title": "Meeting Assistant",
+      },
+    });
+  }
+  return _client;
+}
 
 const MODEL = "anthropic/claude-sonnet-4.5";
 
@@ -36,7 +43,7 @@ export async function summarizeTranscript(
 
 export async function generateTitle(summary: string): Promise<string> {
   if (!summary.trim()) return "";
-  const completion = await client.chat.completions.create({
+  const completion = await getClient().chat.completions.create({
     model: MODEL,
     max_tokens: 60,
     messages: [
@@ -52,7 +59,7 @@ export async function generateTitle(summary: string): Promise<string> {
 }
 
 async function singleSummarize(text: string, systemPrompt: string): Promise<string> {
-  const completion = await client.chat.completions.create({
+  const completion = await getClient().chat.completions.create({
     model: MODEL,
     max_tokens: 4096,
     messages: [
