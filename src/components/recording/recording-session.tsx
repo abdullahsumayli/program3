@@ -1,12 +1,16 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Headphones, Laptop2, Mic, Square, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LiveTranscript } from "./live-transcript";
 import { MicTest } from "./mic-test";
-import { type RecordingMode, useRecordingModes } from "@/hooks/use-recording-modes";
+import {
+  type RecordingDiagnosticsEvent,
+  type RecordingMode,
+  useRecordingModes,
+} from "@/hooks/use-recording-modes";
 import { useLanguage } from "@/lib/i18n/context";
 import { formatDuration } from "@/lib/utils";
 import type { TrackType } from "@/lib/supabase/types";
@@ -22,9 +26,13 @@ export function RecordingSession({
 }) {
   const { t, locale } = useLanguage();
   const router = useRouter();
-  const recording = useRecordingModes();
   const [summarizing, setSummarizing] = useState(false);
   const [selectedMode, setSelectedMode] = useState<RecordingMode>("remote-share");
+  const [recordingSessionId, setRecordingSessionId] = useState<string | null>(null);
+  const recordingSessionIdRef = useRef<string | null>(null);
+  const interruptionCountRef = useRef(0);
+  const elapsedRef = useRef(0);
+  const systemAudioActiveRef = useRef(false);
   const isLecture = trackType === "lectures";
   const modeCopy =
     locale === "ar"
@@ -40,7 +48,7 @@ export function RecordingSession({
           micDetail:
             "هذا الخيار مناسب عندما تكون موجودًا في نفس المكان وتريد تسجيل الأصوات القريبة مباشرة."
         }
-      : {
+       : {
           remoteTitle: "Remote meeting sharing",
           remoteDescription:
             "Share the meeting with audio so you can hear and record the other participant.",
@@ -50,8 +58,140 @@ export function RecordingSession({
           micDescription:
             "Use the laptop or phone microphone when you are physically inside the meeting or lecture room.",
           micDetail:
-            "Best when you are present in the room and want to capture nearby voices directly."
-        };
+             "Best when you are present in the room and want to capture nearby voices directly."
+         };
+
+  const updateRecordingSession = useCallback(
+    async (payload: Record<string, unknown>) => {
+      const sessionId = recordingSessionIdRef.current;
+      if (!sessionId) return;
+
+      try {
+        await fetch(`/api/recording-sessions/${sessionId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      } catch (error) {
+        console.error("Failed to update recording session", error);
+      }
+    },
+    []
+  );
+
+  const handleDiagnosticsEvent = useCallback(
+    (event: RecordingDiagnosticsEvent) => {
+      if (event.type === "session_started") {
+        void updateRecordingSession({
+          status: "recording",
+          system_audio_active: event.systemAudioActive,
+          last_error_status: null,
+          last_error_message: null,
+        });
+        return;
+      }
+
+      if (event.type === "system_audio_changed") {
+        void updateRecordingSession({
+          system_audio_active: event.active,
+          duration_seconds: elapsedRef.current,
+        });
+        return;
+      }
+
+      if (event.type === "session_reconnecting") {
+        interruptionCountRef.current = event.attempt;
+        void updateRecordingSession({
+          status: "recording",
+          interruption_count: event.attempt,
+          duration_seconds: elapsedRef.current,
+          last_error_status: event.status,
+          last_error_message: event.message,
+        });
+        return;
+      }
+
+      interruptionCountRef.current = event.reconnectCount;
+      void updateRecordingSession({
+        status:
+          event.status === "get_user_media_failed" || event.status === "api_key_fetch_failed"
+            ? "error"
+            : "interrupted",
+        interruption_count: event.reconnectCount,
+        duration_seconds: elapsedRef.current,
+        ended_at: new Date().toISOString(),
+        last_error_status: event.status,
+        last_error_message: event.message,
+      });
+    },
+    [updateRecordingSession]
+  );
+
+  const recording = useRecordingModes({
+    onDiagnosticsEvent: handleDiagnosticsEvent,
+  });
+
+  useEffect(() => {
+    recordingSessionIdRef.current = recordingSessionId;
+  }, [recordingSessionId]);
+
+  useEffect(() => {
+    elapsedRef.current = recording.elapsed;
+    systemAudioActiveRef.current = recording.systemAudioActive;
+  }, [recording.elapsed, recording.systemAudioActive]);
+
+  useEffect(() => {
+    if (!recordingSessionId || recording.state !== "recording") return;
+
+    const heartbeat = () => {
+      void updateRecordingSession({
+        status: "recording",
+        duration_seconds: elapsedRef.current,
+        interruption_count: interruptionCountRef.current,
+        system_audio_active: systemAudioActiveRef.current,
+        last_heartbeat_at: new Date().toISOString(),
+      });
+    };
+
+    heartbeat();
+    const interval = setInterval(heartbeat, 30000);
+    return () => clearInterval(interval);
+  }, [
+    recording.elapsed,
+    recording.state,
+    recording.systemAudioActive,
+    recordingSessionId,
+    updateRecordingSession,
+  ]);
+
+  const handleStart = async () => {
+    interruptionCountRef.current = 0;
+    setRecordingSessionId(null);
+    recordingSessionIdRef.current = null;
+
+    try {
+      const res = await fetch("/api/recording-sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          track_id: trackId,
+          recording_mode: selectedMode,
+          status: "starting",
+          system_audio_requested: selectedMode === "remote-share",
+        }),
+      });
+
+      if (res.ok) {
+        const session = await res.json();
+        setRecordingSessionId(session.id);
+        recordingSessionIdRef.current = session.id;
+      }
+    } catch (error) {
+      console.error("Failed to create recording session", error);
+    }
+
+    await recording.startRecording(selectedMode);
+  };
 
   const handleStop = async () => {
     const { transcript, segments, duration, audioBlob } = await recording.stopRecording();
@@ -87,6 +227,15 @@ export function RecordingSession({
       });
       const meeting = await createRes.json();
 
+      await updateRecordingSession({
+        status: "completed",
+        duration_seconds: duration,
+        ended_at: new Date().toISOString(),
+        meeting_id: meeting.id ?? null,
+        interruption_count: interruptionCountRef.current,
+        system_audio_active: systemAudioActiveRef.current,
+      });
+
       // Summarize
       await fetch("/api/summarize", {
         method: "POST",
@@ -99,6 +248,14 @@ export function RecordingSession({
       router.refresh();
     } catch (err) {
       console.error(err);
+      await updateRecordingSession({
+        status: "error",
+        duration_seconds: duration,
+        ended_at: new Date().toISOString(),
+        interruption_count: interruptionCountRef.current,
+        last_error_status: "post_processing_error",
+        last_error_message: err instanceof Error ? err.message : "Failed to save recording",
+      });
       setSummarizing(false);
     }
   };
@@ -142,7 +299,7 @@ export function RecordingSession({
 
             <div className="flex gap-2">
               {isIdle && (
-                <Button onClick={() => recording.startRecording(selectedMode)} size="lg">
+                <Button onClick={handleStart} size="lg">
                   <Mic size={18} />
                   {t(isLecture ? "track.startLecture" : "track.startMeeting")}
                 </Button>

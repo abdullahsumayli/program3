@@ -52,3 +52,26 @@ export type Settings = {
   language: "en" | "ar";
   updated_at: string;
 };
+
+export type RecordingSessionStatus = "starting" | "recording" | "completed" | "interrupted" | "error";
+
+export type RecordingSession = {
+  id: string;
+  user_id: string;
+  user_email: string | null;
+  track_id: string | null;
+  meeting_id: string | null;
+  recording_mode: "remote-share" | "mic-only";
+  status: RecordingSessionStatus;
+  interruption_count: number;
+  duration_seconds: number;
+  system_audio_requested: boolean;
+  system_audio_active: boolean;
+  last_error_status: string | null;
+  last_error_message: string | null;
+  started_at: string;
+  ended_at: string | null;
+  last_heartbeat_at: string;
+  created_at: string;
+  updated_at: string;
+};

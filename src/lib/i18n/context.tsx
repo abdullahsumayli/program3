@@ -1,6 +1,13 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import { getTranslation, type Locale } from "./translations";
 
 type LanguageContextValue = {
@@ -14,6 +21,15 @@ const LanguageContext = createContext<LanguageContextValue | null>(null);
 
 const STORAGE_KEY = "app-locale";
 
+function getStoredLocale(fallback: Locale) {
+  if (typeof window === "undefined") {
+    return fallback;
+  }
+
+  const saved = localStorage.getItem(STORAGE_KEY);
+  return saved === "en" || saved === "ar" ? saved : fallback;
+}
+
 export function LanguageProvider({
   children,
   initialLocale = "en",
@@ -21,14 +37,24 @@ export function LanguageProvider({
   children: ReactNode;
   initialLocale?: Locale;
 }) {
-  const [locale, setLocaleState] = useState<Locale>(initialLocale);
+  const locale = useSyncExternalStore(
+    (callback) => {
+      if (typeof window === "undefined") {
+        return () => {};
+      }
 
-  useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY) as Locale | null;
-    if (saved === "en" || saved === "ar") {
-      setLocaleState(saved);
-    }
-  }, []);
+      const handleStorage = (event: StorageEvent) => {
+        if (event.key === null || event.key === STORAGE_KEY) {
+          callback();
+        }
+      };
+
+      window.addEventListener("storage", handleStorage);
+      return () => window.removeEventListener("storage", handleStorage);
+    },
+    () => getStoredLocale(initialLocale),
+    () => initialLocale
+  );
 
   useEffect(() => {
     const dir = locale === "ar" ? "rtl" : "ltr";
@@ -37,8 +63,8 @@ export function LanguageProvider({
   }, [locale]);
 
   const setLocale = useCallback((next: Locale) => {
-    setLocaleState(next);
     localStorage.setItem(STORAGE_KEY, next);
+    window.dispatchEvent(new StorageEvent("storage", { key: STORAGE_KEY, newValue: next }));
     fetch("/api/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },

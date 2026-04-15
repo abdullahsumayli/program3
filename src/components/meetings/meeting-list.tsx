@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { MeetingItem } from "./meeting-item";
 import { useLanguage } from "@/lib/i18n/context";
 import type { Meeting, TrackType } from "@/lib/supabase/types";
@@ -16,15 +16,21 @@ export function MeetingList({
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true);
     fetch(`/api/meetings?track_id=${trackId}`)
       .then((r) => r.json())
       .then((data) => setMeetings(Array.isArray(data) ? data : []))
       .finally(() => setLoading(false));
-  };
+  }, [trackId]);
 
-  useEffect(load, [trackId]);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void load();
+    }, 0);
+
+    return () => clearTimeout(timer);
+  }, [load]);
 
   const deleteMeeting = async (id: string) => {
     await fetch(`/api/meetings?id=${id}`, { method: "DELETE" });

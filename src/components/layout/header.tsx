@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Settings as SettingsIcon, Languages, Mic, LogOut } from "lucide-react";
+import { Settings as SettingsIcon, Languages, Mic, LogOut, Shield } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLanguage } from "@/lib/i18n/context";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ export function Header() {
   const { locale, setLocale, t } = useLanguage();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [email, setEmail] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const isAuthPage =
     pathname === "/login" ||
@@ -27,6 +28,18 @@ export function Header() {
     supabase.auth.getUser().then(({ data }) => {
       setEmail(data.user?.email ?? null);
     });
+
+    fetch("/api/admin/me")
+      .then(async (response) => {
+        if (!response.ok) {
+          setIsAdmin(false);
+          return;
+        }
+
+        const data = await response.json();
+        setIsAdmin(Boolean(data.isAdmin));
+      })
+      .catch(() => setIsAdmin(false));
   }, [isAuthPage]);
 
   if (isAuthPage) return null;
@@ -47,6 +60,14 @@ export function Header() {
               <span className="hidden max-w-[180px] truncate text-xs text-gray-500 sm:inline">
                 {email}
               </span>
+            )}
+            {isAdmin && (
+              <Link href="/admin">
+                <Button variant="ghost" size="sm" aria-label="Admin">
+                  <Shield size={16} />
+                  <span className="hidden sm:inline">Admin</span>
+                </Button>
+              </Link>
             )}
             <Button
               variant="ghost"

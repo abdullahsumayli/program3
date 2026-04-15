@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 import { TrackCard } from "./track-card";
 import { AddTrackDialog } from "./add-track-dialog";
@@ -24,32 +24,36 @@ export function TrackGrid() {
   const [addOpen, setAddOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
+  const trimmedSearch = search.trim();
 
-  const loadTracks = () => {
+  const loadTracks = useCallback(() => {
     setLoading(true);
     fetch("/api/tracks")
       .then((r) => r.json())
       .then((data) => setTracks(Array.isArray(data) ? data : []))
       .finally(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    loadTracks();
   }, []);
 
   useEffect(() => {
-    if (!search.trim()) {
-      setResults([]);
+    const timer = setTimeout(() => {
+      void loadTracks();
+    }, 0);
+
+    return () => clearTimeout(timer);
+  }, [loadTracks]);
+
+  useEffect(() => {
+    if (!trimmedSearch) {
       return;
     }
     const timer = setTimeout(() => {
-      fetch(`/api/search?q=${encodeURIComponent(search)}`)
+      fetch(`/api/search?q=${encodeURIComponent(trimmedSearch)}`)
         .then((r) => r.json())
         .then((data) => setResults(Array.isArray(data) ? data : []))
         .catch(() => setResults([]));
     }, 300);
     return () => clearTimeout(timer);
-  }, [search]);
+  }, [trimmedSearch]);
 
   const deleteTrack = async (id: string) => {
     await fetch(`/api/tracks?id=${id}`, { method: "DELETE" });
@@ -69,12 +73,18 @@ export function TrackGrid() {
       <div className="mb-6 max-w-md">
         <SearchInput
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => {
+            const value = e.target.value;
+            setSearch(value);
+            if (!value.trim()) {
+              setResults([]);
+            }
+          }}
           placeholder={t("home.searchPlaceholder")}
         />
       </div>
 
-      {search.trim() && results.length > 0 && (
+      {trimmedSearch && results.length > 0 && (
         <div className="mb-6 rounded-xl border border-gray-200 bg-white p-4">
           <h2 className="mb-2 text-sm font-semibold text-gray-700">
             {results.length} result{results.length !== 1 ? "s" : ""}

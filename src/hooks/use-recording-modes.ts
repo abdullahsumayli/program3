@@ -5,6 +5,34 @@ import { SonioxClient, type Token } from "@soniox/speech-to-text-web";
 
 type RecordingState = "idle" | "starting" | "recording" | "stopping" | "error";
 export type RecordingMode = "remote-share" | "mic-only";
+type RecordingErrorStatus =
+  | "api_error"
+  | "api_key_fetch_failed"
+  | "get_user_media_failed"
+  | "media_recorder_error"
+  | "queue_limit_exceeded"
+  | "websocket_error";
+
+export type RecordingDiagnosticsEvent =
+  | { type: "session_started"; systemAudioActive: boolean }
+  | { type: "system_audio_changed"; active: boolean }
+  | {
+      type: "session_reconnecting";
+      attempt: number;
+      status: RecordingErrorStatus;
+      message: string;
+    }
+  | {
+      type: "session_error";
+      status: RecordingErrorStatus;
+      message: string;
+      reconnectCount: number;
+    };
+
+const SONIOX_MODEL = "stt-rt-v4";
+const SONIOX_KEEPALIVE_INTERVAL_MS = 5000;
+const MAX_SONIOX_RETRIES = 3;
+const SONIOX_RETRY_DELAY_MS = 1000;
 
 export type SpeakerSegment = {
   speaker_id: number;
@@ -13,7 +41,9 @@ export type SpeakerSegment = {
   end_ms: number;
 };
 
-export function useRecordingModes() {
+export function useRecordingModes(options?: {
+  onDiagnosticsEvent?: (event: RecordingDiagnosticsEvent) => void;
+}) {
   const [state, setState] = useState<RecordingState>("idle");
   const [finalTokens, setFinalTokens] = useState<Token[]>([]);
   const [nonFinalTokens, setNonFinalTokens] = useState<Token[]>([]);
@@ -27,12 +57,18 @@ export function useRecordingModes() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startTimeRef = useRef<number>(0);
   const systemStreamRef = useRef<MediaStream | null>(null);
+  const combinedStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const finalTokensRef = useRef<Token[]>([]);
   const nonFinalTokensRef = useRef<Token[]>([]);
   const finishCallbackRef = useRef<(() => void) | null>(null);
+  const isStoppingRef = useRef(false);
+  const hasStartedSessionRef = useRef(false);
+  const reconnectAttemptsRef = useRef(0);
+  const systemAudioActiveRef = useRef(false);
 
   const startRecording = useCallback(async (mode: RecordingMode) => {
     setState("starting");
@@ -42,10 +78,18 @@ export function useRecordingModes() {
     setElapsed(0);
     setAudioBlob(null);
     setSystemAudioActive(false);
+    systemAudioActiveRef.current = false;
     audioChunksRef.current = [];
     finalTokensRef.current = [];
     nonFinalTokensRef.current = [];
     finishCallbackRef.current = null;
+    isStoppingRef.current = false;
+    hasStartedSessionRef.current = false;
+    reconnectAttemptsRef.current = 0;
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
 
     try {
       const micStream = await navigator.mediaDevices.getUserMedia({
@@ -79,13 +123,23 @@ export function useRecordingModes() {
         combinedStream = dest.stream;
         audioContextRef.current = ctx;
         setSystemAudioActive(true);
+        systemAudioActiveRef.current = true;
         systemStream.getAudioTracks().forEach((track) => {
-          track.onended = () => setSystemAudioActive(false);
+          track.onended = () => {
+            setSystemAudioActive(false);
+            systemAudioActiveRef.current = false;
+            options?.onDiagnosticsEvent?.({
+              type: "system_audio_changed",
+              active: false,
+            });
+          };
         });
       } else {
         combinedStream = micStream;
         setSystemAudioActive(false);
+        systemAudioActiveRef.current = false;
       }
+      combinedStreamRef.current = combinedStream;
 
       const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
         ? "audio/webm;codecs=opus"
@@ -101,63 +155,120 @@ export function useRecordingModes() {
       };
       mediaRecorder.start(1000);
 
-      const sonioxStream = combinedStream.clone();
+      const startSonioxSession = async () => {
+        const sourceStream = combinedStreamRef.current;
+        if (!sourceStream || sourceStream.getAudioTracks().length === 0) {
+          throw new Error("Recording audio stream is unavailable");
+        }
 
-      const client = new SonioxClient({
-        apiKey: async () => {
-          const res = await fetch("/api/soniox-temp-key", { method: "POST" });
-          const data = await res.json();
-          if (!data.api_key) throw new Error(data.error || "Failed to get temp key");
-          return data.api_key;
-        },
-        onStarted: () => {
-          setState("recording");
-          startTimeRef.current = Date.now();
-          timerRef.current = setInterval(() => {
-            setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
-          }, 500);
-        },
-        onPartialResult: (result) => {
-          const tokens = result.tokens ?? [];
-          const newFinal = tokens.filter((t) => t.is_final);
-          const newNonFinal = tokens.filter((t) => !t.is_final);
+        const sonioxStream = sourceStream.clone();
+        const client = new SonioxClient({
+          apiKey: async () => {
+            const res = await fetch("/api/soniox-temp-key", { method: "POST" });
+            const data = await res.json();
+            if (!data.api_key) throw new Error(data.error || "Failed to get temp key");
+            return data.api_key;
+          },
+          keepAlive: true,
+          keepAliveInterval: SONIOX_KEEPALIVE_INTERVAL_MS,
+          onStarted: () => {
+            reconnectAttemptsRef.current = 0;
+            setError(null);
+            setState("recording");
+            options?.onDiagnosticsEvent?.({
+              type: "session_started",
+              systemAudioActive: systemAudioActiveRef.current,
+            });
+            if (!hasStartedSessionRef.current) {
+              hasStartedSessionRef.current = true;
+              startTimeRef.current = Date.now();
+              timerRef.current = setInterval(() => {
+                setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
+              }, 500);
+            }
+          },
+          onPartialResult: (result) => {
+            const tokens = result.tokens ?? [];
+            const newFinal = tokens.filter((t) => t.is_final);
+            const newNonFinal = tokens.filter((t) => !t.is_final);
 
-          if (newFinal.length > 0) {
-            finalTokensRef.current = [...finalTokensRef.current, ...newFinal];
-          }
-          nonFinalTokensRef.current = newNonFinal;
+            if (newFinal.length > 0) {
+              finalTokensRef.current = [...finalTokensRef.current, ...newFinal];
+            }
+            nonFinalTokensRef.current = newNonFinal;
 
-          if (newFinal.length > 0) {
-            setFinalTokens((prev) => [...prev, ...newFinal]);
-          }
-          setNonFinalTokens(newNonFinal);
-        },
-        onFinished: () => {
-          if (timerRef.current) {
-            clearInterval(timerRef.current);
-            timerRef.current = null;
-          }
-          if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-            mediaRecorderRef.current.stop();
-          }
-          finishCallbackRef.current?.();
-        },
-        onError: (_status, message) => {
-          setError(message);
-          setState("error");
-          finishCallbackRef.current?.();
-        },
-      });
+            if (newFinal.length > 0) {
+              setFinalTokens((prev) => [...prev, ...newFinal]);
+            }
+            setNonFinalTokens(newNonFinal);
+          },
+          onFinished: () => {
+            clientRef.current = null;
+            if (isStoppingRef.current) {
+              if (timerRef.current) {
+                clearInterval(timerRef.current);
+                timerRef.current = null;
+              }
+              finishCallbackRef.current?.();
+            }
+          },
+          onError: (status, message) => {
+            clientRef.current = null;
 
-      clientRef.current = client;
+            const canRetry =
+              !isStoppingRef.current &&
+              combinedStreamRef.current?.getAudioTracks().some((track) => track.readyState === "live") &&
+              reconnectAttemptsRef.current < MAX_SONIOX_RETRIES &&
+              (status === "websocket_error" ||
+                status === "media_recorder_error" ||
+                status === "api_error" ||
+                status === "queue_limit_exceeded");
 
-      await client.start({
-        model: "stt-rt-preview",
-        languageHints: ["ar", "en"],
-        enableSpeakerDiarization: true,
-        enableEndpointDetection: true,
-        stream: sonioxStream,
-      });
+            if (canRetry) {
+              reconnectAttemptsRef.current += 1;
+              options?.onDiagnosticsEvent?.({
+                type: "session_reconnecting",
+                attempt: reconnectAttemptsRef.current,
+                status,
+                message,
+              });
+              retryTimerRef.current = setTimeout(() => {
+                retryTimerRef.current = null;
+                void startSonioxSession().catch((retryErr) => {
+                  setError(
+                    retryErr instanceof Error ? retryErr.message : "Failed to restart transcription"
+                  );
+                  setState("error");
+                  finishCallbackRef.current?.();
+                });
+              }, SONIOX_RETRY_DELAY_MS);
+              return;
+            }
+
+            options?.onDiagnosticsEvent?.({
+              type: "session_error",
+              status,
+              message,
+              reconnectCount: reconnectAttemptsRef.current,
+            });
+            setError(message);
+            setState("error");
+            finishCallbackRef.current?.();
+          },
+        });
+
+        clientRef.current = client;
+
+        await client.start({
+          model: SONIOX_MODEL,
+          languageHints: ["ar", "en"],
+          enableSpeakerDiarization: true,
+          enableEndpointDetection: true,
+          stream: sonioxStream,
+        });
+      };
+
+      await startSonioxSession();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start");
       setState("error");
@@ -165,7 +276,7 @@ export function useRecordingModes() {
       systemStreamRef.current?.getTracks().forEach((t) => t.stop());
       audioContextRef.current?.close();
     }
-  }, []);
+  }, [options]);
 
   const stopRecording = useCallback((): Promise<{
     transcript: string;
@@ -174,10 +285,15 @@ export function useRecordingModes() {
     audioBlob: Blob | null;
   }> => {
     return new Promise((resolve) => {
+      isStoppingRef.current = true;
       setState("stopping");
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
+      }
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
       }
       const finalDuration = Math.floor((Date.now() - startTimeRef.current) / 1000);
 
@@ -189,6 +305,7 @@ export function useRecordingModes() {
         systemStreamRef.current?.getTracks().forEach((t) => t.stop());
         audioContextRef.current?.close().catch(() => {});
         setSystemAudioActive(false);
+        systemAudioActiveRef.current = false;
 
         const finalizeAudio = () => {
           const blob = audioChunksRef.current.length
@@ -210,6 +327,7 @@ export function useRecordingModes() {
               finalizeAudio();
             }
           };
+          mr.stop();
           setTimeout(() => {
             if (!settled) {
               settled = true;
@@ -243,12 +361,13 @@ export function useRecordingModes() {
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
       clientRef.current?.cancel();
       streamRef.current?.getTracks().forEach((t) => t.stop());
       systemStreamRef.current?.getTracks().forEach((t) => t.stop());
       audioContextRef.current?.close();
     };
-  }, []);
+  }, [options]);
 
   useEffect(() => {
     if (state !== "recording") return;
