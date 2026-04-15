@@ -15,7 +15,7 @@ Program3 is a company meeting management platform built for internal teams. The 
 
 ## Product Scope
 
-This repo has been refocused away from students, lectures, and study workflows. The current scope is company meetings only.
+This repo is dedicated to company meetings only.
 
 ## Stack
 
@@ -56,12 +56,9 @@ npm install
 cp .env.local.example .env.local
 ```
 
-3. Apply the Supabase migrations in order.
+3. Apply the Supabase baseline migration:
 
-Important for the current product model:
-
-- `supabase/migrations/005_company_meetings_platform.sql`
-- `supabase/migrations/006_remove_tracks_runtime.sql`
+- `supabase/migrations/001_company_meetings_baseline.sql`
 
 4. Start the dev server.
 

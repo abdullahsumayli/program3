@@ -26,7 +26,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // Store the storage path, not a public URL. A signed URL is minted on demand
-  // by /api/audio-url so we can keep the bucket private.
+  // Store the storage path instead of a public URL so the bucket can stay private.
   return NextResponse.json({ path: filename });
 }
