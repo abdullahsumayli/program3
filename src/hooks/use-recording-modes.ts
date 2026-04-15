@@ -34,6 +34,7 @@ const SONIOX_KEEPALIVE_INTERVAL_MS = 5000;
 const MAX_SONIOX_RETRIES = 3;
 const SONIOX_RETRY_DELAY_MS = 1000;
 const STARTING_TIMEOUT_MS = 20000;
+const SONIOX_CONNECT_TIMEOUT_MS = 12000;
 
 export type SpeakerSegment = {
   speaker_id: number;
@@ -340,13 +341,24 @@ export function useRecordingModes(options?: {
 
         clientRef.current = client;
 
-        await client.start({
-          model: SONIOX_MODEL,
-          languageHints: ["ar", "en"],
-          enableSpeakerDiarization: true,
-          enableEndpointDetection: true,
-          stream: sonioxStream,
-        });
+        await Promise.race([
+          client.start({
+            model: SONIOX_MODEL,
+            languageHints: ["ar", "en"],
+            enableSpeakerDiarization: true,
+            enableEndpointDetection: true,
+            stream: sonioxStream,
+          }),
+          new Promise<never>((_, reject) => {
+            setTimeout(() => {
+              reject(
+                new Error(
+                  "Transcription service did not connect in time. Cancel and try microphone only, or check the Soniox connection."
+                )
+              );
+            }, SONIOX_CONNECT_TIMEOUT_MS);
+          }),
+        ]);
       };
 
       await startSonioxSession();
