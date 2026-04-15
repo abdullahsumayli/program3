@@ -1,7 +1,7 @@
 {
   "app": {
     "title": "Meeting OS",
-    "subtitle": "Record meetings, upload recordings, and turn them into decisions and tasks."
+    "subtitle": "Turn company meetings into accountable execution."
   },
   "header": {
     "dashboard": "Dashboard",
@@ -40,8 +40,8 @@
     "noData": "No data yet"
   },
   "dashboard": {
-    "title": "Company meeting dashboard",
-    "subtitle": "Everything in one place: recordings, transcripts, decisions, and execution tasks.",
+    "title": "Turn every company meeting into clear tasks and decisions",
+    "subtitle": "This workspace does more than record and summarize. It extracts what needs to be done next: tasks, owners, deadlines, and execution follow-through.",
     "recordMeeting": "Record meeting",
     "uploadRecording": "Upload recording",
     "processing": "Processing...",
@@ -63,7 +63,34 @@
     "quotaWarning": "Remaining balance is low.",
     "sourceLive": "Live recording",
     "sourceUpload": "Uploaded file",
-    "viewMeeting": "Open meeting"
+    "viewMeeting": "Open meeting",
+    "executionLabel": "Execution-first meeting workspace",
+    "openTasks": "Open tasks",
+    "overdueTasks": "Overdue tasks",
+    "decisionsExtracted": "Decisions extracted",
+    "executionRate": "Execution rate",
+    "recentMeetings": "Recent meetings",
+    "tasksNeedFollowThrough": "Tasks still waiting for follow-through.",
+    "needsAttention": "Items that need immediate attention.",
+    "openTasksHint": "Active work coming out of meetings.",
+    "overdueTasksHint": "Tasks that passed their due date.",
+    "decisionsExtractedHint": "Decisions already captured from meetings.",
+    "executionRateHint": "Completed tasks out of all extracted tasks.",
+    "recentMeetingsHint": "Latest meetings currently tracked.",
+    "tasksPanelDescription": "Operational task list extracted from meetings and ready for follow-up.",
+    "decisionsPanelDescription": "Latest decisions captured from meetings, with ownership context when available.",
+    "meetingsPanelDescription": "Latest meetings feeding the execution pipeline.",
+    "openTasksCount": "{count} open",
+    "noDueDate": "No due date",
+    "followUpOwnerNamed": "Follow-up: {name}",
+    "followUpOwnerMissing": "No follow-up owner yet",
+    "primaryCtaTitle": "Start a meeting and turn it into execution",
+    "primaryCtaDescription": "Use live recording when you want tasks, decisions, responsibilities, and deadlines extracted automatically.",
+    "primaryCta": "Start a meeting and extract tasks",
+    "primaryCtaHelper": "Live recording is the primary path. Once the meeting ends, the system turns it into transcript, decisions, owners, and deadlines.",
+    "secondaryCtaDescription": "Upload an existing recording if the meeting already happened.",
+    "statusNew": "New",
+    "statusOverdue": "Overdue"
   },
   "meeting": {
     "back": "Back to dashboard",

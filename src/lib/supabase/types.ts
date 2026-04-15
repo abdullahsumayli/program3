@@ -88,6 +88,13 @@ export type RecordingSession = {
 export type DashboardData = {
   usage: UsageSummary;
   meetings: Meeting[];
-  decisions: Array<MeetingDecision & { meeting_title: string | null }>;
-  tasks: Array<MeetingTask & { meeting_title: string | null }>;
+  decisions: Array<MeetingDecision & {
+    meeting_title: string | null;
+    meeting_created_at: string | null;
+    follow_up_owner: string | null;
+  }>;
+  tasks: Array<MeetingTask & {
+    meeting_title: string | null;
+    meeting_created_at: string | null;
+  }>;
 };
