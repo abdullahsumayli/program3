@@ -110,6 +110,7 @@ export function SettingsPanel() {
 }
 
 function ServiceRow({ title, status }: { title: string; status: ServiceStatus | null }) {
+  const { t } = useLanguage();
   const configured = status?.configured ?? false;
   const connected = status?.connected ?? false;
   const tone = !status
@@ -120,14 +121,20 @@ function ServiceRow({ title, status }: { title: string; status: ServiceStatus | 
         ? "border-amber-200 bg-amber-50 text-amber-700"
         : "border-red-200 bg-red-50 text-red-700";
 
-  const badge = !status ? "Not checked" : connected ? "Connected" : configured ? "Configured only" : "Missing key";
+  const badge = !status
+    ? t("settings.statusNotChecked")
+    : connected
+      ? t("settings.statusConnected")
+      : configured
+        ? t("settings.statusConfiguredOnly")
+        : t("settings.statusMissingKey");
 
   return (
     <div className={`rounded-2xl border px-4 py-4 ${tone}`}>
       <div className="flex items-center justify-between gap-3">
         <div>
           <div className="text-sm font-semibold">{title}</div>
-          <div className="mt-1 text-sm opacity-90">{status?.label ?? "Run the connection test to verify this service."}</div>
+          <div className="mt-1 text-sm opacity-90">{status?.label ?? t("settings.serviceCheckHint")}</div>
         </div>
         <span className="rounded-full bg-white/80 px-3 py-1 text-xs font-semibold">{badge}</span>
       </div>
