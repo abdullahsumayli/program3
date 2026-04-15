@@ -1,15 +1,29 @@
 import { NextResponse } from "next/server";
 import { createClient } from "./server";
-import type { User } from "@supabase/supabase-js";
+import type { User, SupabaseClient } from "@supabase/supabase-js";
+import {
+  resolveActiveWorkspace,
+  roleSatisfies,
+  type WorkspaceContext,
+  type WorkspaceRole,
+} from "@/lib/workspace/context";
+
+type AuthOk = {
+  user: User;
+  supabase: SupabaseClient;
+  error?: never;
+};
+
+type AuthErr = {
+  error: NextResponse;
+  user?: never;
+  supabase?: never;
+};
 
 /**
  * Require an authenticated user for API route handlers.
- * Returns either { user, supabase } or a NextResponse with 401 to return directly.
  */
-export async function requireUser(): Promise<
-  | { user: User; supabase: Awaited<ReturnType<typeof createClient>>; error?: never }
-  | { error: NextResponse; user?: never; supabase?: never }
-> {
+export async function requireUser(): Promise<AuthOk | AuthErr> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -22,4 +36,40 @@ export async function requireUser(): Promise<
   }
 
   return { user, supabase };
+}
+
+type WorkspaceOk = AuthOk & { workspace: WorkspaceContext };
+type WorkspaceErr = AuthErr;
+
+/**
+ * Require an authenticated user AND an active workspace they belong to.
+ * Optionally enforce a minimum role.
+ */
+export async function requireWorkspace(
+  minRole: WorkspaceRole = "member"
+): Promise<WorkspaceOk | WorkspaceErr> {
+  const auth = await requireUser();
+  if (auth.error) return auth;
+
+  const workspace = await resolveActiveWorkspace(auth.supabase, auth.user.id);
+
+  if (!workspace) {
+    return {
+      error: NextResponse.json(
+        { error: "No workspace. Create or join one." },
+        { status: 403 }
+      ),
+    };
+  }
+
+  if (!roleSatisfies(workspace.role, minRole)) {
+    return {
+      error: NextResponse.json(
+        { error: `Requires ${minRole} role.` },
+        { status: 403 }
+      ),
+    };
+  }
+
+  return { user: auth.user, supabase: auth.supabase, workspace };
 }

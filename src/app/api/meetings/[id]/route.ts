@@ -1,22 +1,27 @@
-﻿import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/supabase/auth";
+import { NextResponse } from "next/server";
+import { requireWorkspace } from "@/lib/supabase/auth";
 
 export async function GET(_req: Request, ctx: RouteContext<"/api/meetings/[id]">) {
-  const auth = await requireUser();
+  const auth = await requireWorkspace();
   if (auth.error) return auth.error;
-  const { user, supabase } = auth;
+  const { supabase, workspace } = auth;
 
   const { id } = await ctx.params;
-  const { data, error } = await supabase.from("meetings").select("*").eq("id", id).eq("user_id", user.id).single();
+  const { data, error } = await supabase
+    .from("meetings")
+    .select("*")
+    .eq("id", id)
+    .eq("workspace_id", workspace.id)
+    .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data);
 }
 
 export async function PATCH(request: Request, ctx: RouteContext<"/api/meetings/[id]">) {
-  const auth = await requireUser();
+  const auth = await requireWorkspace();
   if (auth.error) return auth.error;
-  const { user, supabase } = auth;
+  const { supabase, workspace } = auth;
 
   const { id } = await ctx.params;
   const body = await request.json();
@@ -33,7 +38,13 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/meetings/[
   if (body.processing_status !== undefined) updates.processing_status = body.processing_status;
   if (body.processing_error !== undefined) updates.processing_error = body.processing_error;
 
-  const { data, error } = await supabase.from("meetings").update(updates).eq("id", id).eq("user_id", user.id).select().single();
+  const { data, error } = await supabase
+    .from("meetings")
+    .update(updates)
+    .eq("id", id)
+    .eq("workspace_id", workspace.id)
+    .select()
+    .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data);

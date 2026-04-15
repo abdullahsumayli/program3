@@ -1,13 +1,19 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/supabase/auth";
+import { requireWorkspace } from "@/lib/supabase/auth";
+import { enforceQuota } from "@/lib/billing/enforce";
 
 const SONIOX_TEMP_KEY_TTL_SECONDS = 3600;
 
 // Issues a short-lived Soniox temporary API key. Requires the caller to be
-// authenticated so anonymous visitors can't drain the Soniox quota.
+// authenticated (and within quota) so anonymous visitors can't drain the
+// Soniox quota.
 export async function POST() {
-  const auth = await requireUser();
+  const auth = await requireWorkspace();
   if (auth.error) return auth.error;
+  const { supabase, workspace } = auth;
+
+  const blocked = await enforceQuota(supabase, workspace);
+  if (blocked) return blocked;
 
   const apiKey = process.env.SONIOX_API_KEY;
   if (!apiKey) {

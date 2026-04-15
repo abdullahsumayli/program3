@@ -2,6 +2,8 @@
 
 Program3 is a company meeting management platform built for internal teams. The product is focused on one flow only: capture a meeting, process it automatically, then turn it into clear decisions and executable tasks.
 
+For the current engineering snapshot and handoff context, see [HANDOFF.md](./HANDOFF.md) and [CLAUDE.md](./CLAUDE.md).
+
 ## What It Does
 
 - Record a live meeting inside the app.
@@ -11,7 +13,7 @@ Program3 is a company meeting management platform built for internal teams. The 
 - Extract `Decisions` from the meeting.
 - Extract `Tasks` with a clear description, owner, due date, and status (`in_progress` or `completed`).
 - Track all meetings, decisions, and task progress from one dashboard.
-- Enforce a monthly usage limit of `120` minutes per user before recording starts.
+- Enforce a monthly usage limit of `120` minutes per workspace on the free plan before recording starts.
 
 ## Product Scope
 
@@ -42,6 +44,16 @@ Required values:
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
 
+Additional values (workspace-first layer: workspaces, invites, billing, reminders):
+
+- `NEXT_PUBLIC_APP_URL`
+- `MOYASAR_SECRET_KEY`
+- `MOYASAR_PUBLISHABLE_KEY`
+- `MOYASAR_WEBHOOK_SECRET`
+- `RESEND_API_KEY`
+- `RESEND_FROM_EMAIL`
+- `CRON_SECRET`
+
 ## Local Setup
 
 1. Install dependencies.
@@ -56,9 +68,11 @@ npm install
 cp .env.local.example .env.local
 ```
 
-3. Apply the Supabase baseline migration:
+3. Apply the Supabase migrations (in order):
 
 - `supabase/migrations/001_company_meetings_baseline.sql`
+- `supabase/migrations/002_workspaces.sql`
+- `supabase/migrations/003_billing.sql`
 
 4. Start the dev server.
 
@@ -91,3 +105,4 @@ npm run build
 - Recording is blocked when the user has no remaining monthly minutes.
 - Meetings can be created either from live recording or uploaded audio.
 - The dashboard is the central view for meetings, decisions, tasks, and usage.
+- The working tree also contains a larger in-progress layer for workspaces, billing, invites, and reminders. Read `HANDOFF.md` before changing that area.

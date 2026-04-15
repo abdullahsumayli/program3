@@ -1,26 +1,25 @@
-﻿import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/supabase/auth";
-import { getUsageSummary } from "@/lib/meetings";
+import { NextResponse } from "next/server";
+import { requireWorkspace } from "@/lib/supabase/auth";
+import { enforceQuota } from "@/lib/billing/enforce";
 
 export async function POST(request: Request) {
-  const auth = await requireUser();
+  const auth = await requireWorkspace();
   if (auth.error) return auth.error;
+  const { user, supabase, workspace } = auth;
 
-  const { user, supabase } = auth;
   const body = await request.json();
 
   if (!body.recording_mode) {
     return NextResponse.json({ error: "recording_mode required" }, { status: 400 });
   }
 
-  const usage = await getUsageSummary(supabase, user.id);
-  if (usage.remainingSeconds <= 0) {
-    return NextResponse.json({ error: "Monthly recording balance exhausted" }, { status: 403 });
-  }
+  const blocked = await enforceQuota(supabase, workspace);
+  if (blocked) return blocked;
 
   const { data, error } = await supabase
     .from("recording_sessions")
     .insert({
+      workspace_id: workspace.id,
       user_id: user.id,
       user_email: user.email ?? null,
       recording_mode: body.recording_mode,

@@ -14,7 +14,12 @@
     "checkPrompt": "Run the connection test to verify the configured keys.",
     "allConnected": "All required services are connected.",
     "connectionIssues": "One or more services need attention.",
-    "testConnection": "Test connection"
+    "testConnection": "Test connection",
+    "statusNotChecked": "Not checked",
+    "statusConnected": "Connected",
+    "statusConfiguredOnly": "Key configured only",
+    "statusMissingKey": "Missing key",
+    "serviceCheckHint": "Run the connection test to verify this service."
   },
   "auth": {
     "signIn": "Sign in",
@@ -38,6 +43,52 @@
     "completed": "Completed",
     "unassigned": "Unassigned",
     "noData": "No data yet"
+  },
+  "invite": {
+    "title": "You've been invited",
+    "description": "You have been invited to join a workspace.",
+    "acceptButton": "Accept invitation"
+  },
+  "workspace": {
+    "switcherDefault": "Workspace",
+    "switcherTitle": "Workspaces",
+    "newPlaceholder": "New workspace",
+    "manage": "Manage workspace",
+    "settings": {
+      "manageBilling": "Manage billing →",
+      "members": "Members ({count})",
+      "inviteTitle": "Invite a teammate",
+      "emailLabel": "Email",
+      "roleLabel": "Role",
+      "inviteButton": "Invite",
+      "pendingInvites": "Pending invites",
+      "expiresOn": "expires {date}",
+      "planLine": "{planName} plan · {status}"
+    }
+  },
+  "billing": {
+    "title": "Billing",
+    "workspaceSettingsLink": "workspace settings",
+    "currentPlan": "Current plan",
+    "statusLabel": "status:",
+    "freeLabel": "Free",
+    "upgrade": "Upgrade to Paid",
+    "cancel": "Cancel",
+    "renew": "Renew",
+    "usageThisMonth": "Usage this month",
+    "minutes": "minutes",
+    "minutesRemaining": "{count} minutes remaining",
+    "sarPerMonth": "SAR / month",
+    "planFree": "Free",
+    "planPaid": "Paid",
+    "confirmCancel": "Cancel paid subscription? You will keep access until the end of the period."
+  },
+  "pricing": {
+    "title": "Pricing",
+    "subtitle": "Simple plans for teams of every size.",
+    "ctaStartFree": "Start free",
+    "ctaUpgrade": "Upgrade",
+    "sarPerMonth": "SAR / month"
   },
   "dashboard": {
     "title": "Turn every company meeting into clear tasks and decisions",

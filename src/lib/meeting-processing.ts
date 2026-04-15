@@ -1,5 +1,7 @@
-﻿import type { SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { generateMeetingArtifacts } from "@/lib/openrouter/summarize";
+import { sendEmail } from "@/lib/email/client";
+import { taskAssignedEmail } from "@/lib/email/templates";
 
 type SonioxToken = {
   text?: string;
@@ -46,12 +48,14 @@ export function buildTranscriptSegmentsFromTokens(tokens: SonioxToken[]) {
 export async function processMeetingArtifacts({
   supabase,
   userId,
+  workspaceId,
   meetingId,
   transcript,
   fallbackTitle,
 }: {
   supabase: SupabaseClient;
   userId: string;
+  workspaceId: string;
   meetingId: string;
   transcript: string;
   fallbackTitle?: string | null;
@@ -80,16 +84,29 @@ export async function processMeetingArtifacts({
       updated_at: new Date().toISOString(),
     })
     .eq("id", meetingId)
-    .eq("user_id", userId);
+    .eq("workspace_id", workspaceId);
 
   if (meetingError) throw new Error(meetingError.message);
 
-  await supabase.from("meeting_decisions").delete().eq("meeting_id", meetingId).eq("user_id", userId);
-  await supabase.from("meeting_tasks").delete().eq("meeting_id", meetingId).eq("user_id", userId);
+  await supabase
+    .from("meeting_decisions")
+    .delete()
+    .eq("meeting_id", meetingId)
+    .eq("workspace_id", workspaceId);
+  await supabase
+    .from("meeting_tasks")
+    .delete()
+    .eq("meeting_id", meetingId)
+    .eq("workspace_id", workspaceId);
 
   if (artifacts.decisions.length > 0) {
     const { error } = await supabase.from("meeting_decisions").insert(
-      artifacts.decisions.map((content) => ({ meeting_id: meetingId, user_id: userId, content }))
+      artifacts.decisions.map((content) => ({
+        meeting_id: meetingId,
+        workspace_id: workspaceId,
+        user_id: userId,
+        content,
+      }))
     );
 
     if (error) throw new Error(error.message);
@@ -99,6 +116,7 @@ export async function processMeetingArtifacts({
     const { error } = await supabase.from("meeting_tasks").insert(
       artifacts.tasks.map((task) => ({
         meeting_id: meetingId,
+        workspace_id: workspaceId,
         user_id: userId,
         description: task.description,
         owner_name: task.owner || null,
@@ -108,7 +126,54 @@ export async function processMeetingArtifacts({
     );
 
     if (error) throw new Error(error.message);
+
+    void notifyAssignees({ supabase, workspaceId, meetingTitle: resolvedTitle, tasks: artifacts.tasks });
   }
 
   return artifacts;
+}
+
+async function notifyAssignees({
+  supabase,
+  workspaceId,
+  meetingTitle,
+  tasks,
+}: {
+  supabase: SupabaseClient;
+  workspaceId: string;
+  meetingTitle: string;
+  tasks: Array<{ description: string; owner: string | null; dueDate: string | null }>;
+}) {
+  const ownerNames = new Set(
+    tasks.map((t) => (t.owner ?? "").trim().toLowerCase()).filter(Boolean)
+  );
+  if (ownerNames.size === 0) return;
+
+  // Look up workspace members and match by email local-part or full email.
+  const { data: members } = await supabase
+    .from("workspace_members")
+    .select("user_id")
+    .eq("workspace_id", workspaceId);
+  if (!members || members.length === 0) return;
+
+  // We only have user_id in workspace_members; fetch emails via auth admin API
+  // would require service role. Since we don't have that wired here, we match
+  // by owner name stored on the task (e.g. an email the AI extracted).
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+  for (const task of tasks) {
+    const owner = task.owner?.trim();
+    if (!owner || !owner.includes("@")) continue;
+
+    const { subject, html } = taskAssignedEmail({
+      taskDescription: task.description,
+      meetingTitle,
+      dueDate: task.dueDate,
+      appUrl,
+    });
+    try {
+      await sendEmail({ to: owner, subject, html });
+    } catch (err) {
+      console.error("[task-assigned] email send failed", err);
+    }
+  }
 }

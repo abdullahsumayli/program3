@@ -1,22 +1,49 @@
-﻿import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/supabase/auth";
+import { NextResponse } from "next/server";
+import { requireWorkspace } from "@/lib/supabase/auth";
 import { getUsageSummary } from "@/lib/meetings";
+import { PLANS } from "@/lib/billing/plans";
 
 export async function GET() {
-  const auth = await requireUser();
+  const auth = await requireWorkspace();
   if (auth.error) return auth.error;
-  const { user, supabase } = auth;
+  const { supabase, workspace } = auth;
 
-  const usage = await getUsageSummary(supabase, user.id);
+  const usage = await getUsageSummary(supabase, workspace.id, workspace.plan);
+  const plan = PLANS[workspace.plan];
 
-  const [{ data: meetings, error: meetingsError }, { data: decisions, error: decisionsError }, { data: tasks, error: tasksError }] = await Promise.all([
-    supabase.from("meetings").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
-    supabase.from("meeting_decisions").select("*, meetings(title, created_at)").eq("user_id", user.id).order("created_at", { ascending: false }),
-    supabase.from("meeting_tasks").select("*, meetings(title, created_at)").eq("user_id", user.id).order("created_at", { ascending: false }),
+  const [
+    { data: meetings, error: meetingsError },
+    { data: decisions, error: decisionsError },
+    { data: tasks, error: tasksError },
+  ] = await Promise.all([
+    supabase
+      .from("meetings")
+      .select("*")
+      .eq("workspace_id", workspace.id)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("meeting_decisions")
+      .select("*, meetings(title, created_at)")
+      .eq("workspace_id", workspace.id)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("meeting_tasks")
+      .select("*, meetings(title, created_at)")
+      .eq("workspace_id", workspace.id)
+      .order("created_at", { ascending: false }),
   ]);
 
   if (meetingsError || decisionsError || tasksError) {
-    return NextResponse.json({ error: meetingsError?.message ?? decisionsError?.message ?? tasksError?.message ?? "Failed to load dashboard" }, { status: 500 });
+    return NextResponse.json(
+      {
+        error:
+          meetingsError?.message ??
+          decisionsError?.message ??
+          tasksError?.message ??
+          "Failed to load dashboard",
+      },
+      { status: 500 }
+    );
   }
 
   const followUpOwners = new Map<string, string | null>();
@@ -28,6 +55,14 @@ export async function GET() {
 
   return NextResponse.json({
     usage,
+    workspace: {
+      id: workspace.id,
+      name: workspace.name,
+      role: workspace.role,
+      plan: workspace.plan,
+      planName: plan.name,
+      subscription_status: workspace.subscription_status,
+    },
     meetings: meetings ?? [],
     decisions: (decisions ?? []).map((decision) => ({
       ...decision,

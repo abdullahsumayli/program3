@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Languages, LogOut, Mic } from "lucide-react";
 import { useEffect, useState } from "react";
 import { SettingsPanel } from "@/components/layout/settings-panel";
+import { WorkspaceSwitcher } from "@/components/workspace/workspace-switcher";
 import { useLanguage } from "@/lib/i18n/context";
 import { Button } from "@/components/ui/button";
 import { signOut } from "@/app/auth/actions";
@@ -39,6 +40,7 @@ export function Header() {
         </Link>
 
         <div className="flex items-center gap-2">
+          <WorkspaceSwitcher />
           {email && <span className="hidden max-w-[220px] truncate text-xs text-slate-500 sm:inline">{email}</span>}
           <SettingsPanel />
           <Button

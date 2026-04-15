@@ -1,10 +1,10 @@
-﻿import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/supabase/auth";
+import { NextResponse } from "next/server";
+import { requireWorkspace } from "@/lib/supabase/auth";
 
 export async function PATCH(request: Request, ctx: RouteContext<"/api/tasks/[id]">) {
-  const auth = await requireUser();
+  const auth = await requireWorkspace();
   if (auth.error) return auth.error;
-  const { user, supabase } = auth;
+  const { supabase, workspace } = auth;
 
   const { id } = await ctx.params;
   const body = await request.json();
@@ -19,7 +19,7 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/tasks/[id]
     .from("meeting_tasks")
     .update(updates)
     .eq("id", id)
-    .eq("user_id", user.id)
+    .eq("workspace_id", workspace.id)
     .select()
     .single();
 

@@ -1,16 +1,15 @@
-﻿import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/supabase/auth";
+import { NextResponse } from "next/server";
+import { requireWorkspace } from "@/lib/supabase/auth";
 
-export async function GET(request: Request) {
-  const auth = await requireUser();
+export async function GET() {
+  const auth = await requireWorkspace();
   if (auth.error) return auth.error;
-  const { user, supabase } = auth;
+  const { supabase, workspace } = auth;
 
-  void request;
   const { data, error } = await supabase
     .from("meetings")
     .select("*")
-    .eq("user_id", user.id)
+    .eq("workspace_id", workspace.id)
     .order("created_at", { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -18,15 +17,16 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const auth = await requireUser();
+  const auth = await requireWorkspace();
   if (auth.error) return auth.error;
-  const { user, supabase } = auth;
+  const { user, supabase, workspace } = auth;
 
   const body = await request.json();
 
   const { data, error } = await supabase
     .from("meetings")
     .insert({
+      workspace_id: workspace.id,
       user_id: user.id,
       title: body.title ?? null,
       transcript: body.transcript ?? "",
@@ -47,15 +47,19 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const auth = await requireUser();
+  const auth = await requireWorkspace();
   if (auth.error) return auth.error;
-  const { user, supabase } = auth;
+  const { supabase, workspace } = auth;
 
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id");
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
 
-  const { error } = await supabase.from("meetings").delete().eq("id", id).eq("user_id", user.id);
+  const { error } = await supabase
+    .from("meetings")
+    .delete()
+    .eq("id", id)
+    .eq("workspace_id", workspace.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });
 }

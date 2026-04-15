@@ -1,11 +1,11 @@
-﻿import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/supabase/auth";
+import { NextResponse } from "next/server";
+import { requireWorkspace } from "@/lib/supabase/auth";
 import { processMeetingArtifacts } from "@/lib/meeting-processing";
 
 export async function POST(request: Request) {
-  const auth = await requireUser();
+  const auth = await requireWorkspace();
   if (auth.error) return auth.error;
-  const { user, supabase } = auth;
+  const { user, supabase, workspace } = auth;
 
   const { meetingId, transcript, fallbackTitle } = await request.json();
   if (!meetingId || !transcript || typeof transcript !== "string") {
@@ -16,6 +16,7 @@ export async function POST(request: Request) {
     const artifacts = await processMeetingArtifacts({
       supabase,
       userId: user.id,
+      workspaceId: workspace.id,
       meetingId,
       transcript,
       fallbackTitle: fallbackTitle ?? null,
@@ -23,7 +24,17 @@ export async function POST(request: Request) {
 
     return NextResponse.json(artifacts);
   } catch (error) {
-    await supabase.from("meetings").update({ processing_status: "error", processing_error: error instanceof Error ? error.message : "Processing failed" }).eq("id", meetingId).eq("user_id", user.id);
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Processing failed" }, { status: 500 });
+    await supabase
+      .from("meetings")
+      .update({
+        processing_status: "error",
+        processing_error: error instanceof Error ? error.message : "Processing failed",
+      })
+      .eq("id", meetingId)
+      .eq("workspace_id", workspace.id);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Processing failed" },
+      { status: 500 }
+    );
   }
 }

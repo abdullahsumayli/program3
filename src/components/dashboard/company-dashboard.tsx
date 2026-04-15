@@ -104,7 +104,29 @@ export function CompanyDashboard() {
         </div>
       </section>
 
-      {quotaBlocked ? <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{t("dashboard.quotaEmpty")}</div> : null}
+      {data.workspace ? (
+        <div className="mb-6 flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm">
+          <span className="font-medium text-slate-900">{data.workspace.name}</span>
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">{data.workspace.planName}</span>
+          <span className="text-xs text-slate-500">{t("dashboard.usageMeter", { used: data.usage.usedMinutes, limit: data.usage.limitMinutes })}</span>
+          {data.workspace.plan === "free" ? (
+            <Link href="/settings/billing" className="ms-auto text-xs font-medium text-blue-600 hover:underline">
+              {t("dashboard.upgradeCta")} →
+            </Link>
+          ) : null}
+        </div>
+      ) : null}
+
+      {quotaBlocked ? (
+        <div className="mb-6 flex flex-wrap items-center gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <span>{t("dashboard.quotaEmptyDynamic", { limit: data.usage.limitMinutes })}</span>
+          {data.workspace?.plan === "free" ? (
+            <Link href="/settings/billing" className="ms-auto font-medium text-red-800 underline">
+              {t("dashboard.upgradeCta")}
+            </Link>
+          ) : null}
+        </div>
+      ) : null}
 
       <section className="mb-8 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <ExecutionCard label={t("dashboard.openTasks")} value={String(openTasks.length)} hint={t("dashboard.openTasksHint")} icon={<ClipboardList size={18} />} />

@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/supabase/auth";
+import { requireWorkspace } from "@/lib/supabase/auth";
 
 export async function PATCH(
   request: Request,
   ctx: RouteContext<"/api/recording-sessions/[id]">
 ) {
-  const auth = await requireUser();
+  const auth = await requireWorkspace();
   if (auth.error) return auth.error;
 
-  const { user, supabase } = auth;
+  const { supabase, workspace } = auth;
   const { id } = await ctx.params;
   const body = await request.json();
 
@@ -34,7 +34,7 @@ export async function PATCH(
     .from("recording_sessions")
     .update(updates)
     .eq("id", id)
-    .eq("user_id", user.id)
+    .eq("workspace_id", workspace.id)
     .select()
     .single();
 

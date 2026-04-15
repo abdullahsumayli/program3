@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/supabase/auth";
+import { requireWorkspace } from "@/lib/supabase/auth";
 
 const BUCKET = "meeting-audio";
 
 export async function POST(request: Request) {
-  const auth = await requireUser();
+  const auth = await requireWorkspace();
   if (auth.error) return auth.error;
-  const { user, supabase } = auth;
+  const { supabase, workspace } = auth;
 
   const formData = await request.formData();
   const file = formData.get("audio");
@@ -14,8 +14,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "audio file required" }, { status: 400 });
   }
 
-  // Path starts with the user id so storage RLS can gate access by owner.
-  const filename = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.webm`;
+  // Path starts with the workspace id so storage RLS gates by membership.
+  const filename = `${workspace.id}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.webm`;
   const arrayBuffer = await file.arrayBuffer();
 
   const { error } = await supabase.storage
@@ -26,6 +26,5 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // Store the storage path instead of a public URL so the bucket can stay private.
   return NextResponse.json({ path: filename });
 }

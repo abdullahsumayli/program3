@@ -1,7 +1,7 @@
-﻿import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/supabase/auth";
+import { NextResponse } from "next/server";
+import { requireWorkspace } from "@/lib/supabase/auth";
 import { buildTranscriptSegmentsFromTokens, processMeetingArtifacts } from "@/lib/meeting-processing";
-import { getUsageSummary } from "@/lib/meetings";
+import { enforceQuota } from "@/lib/billing/enforce";
 
 const BUCKET = "meeting-audio";
 const SONIOX_BASE_URL = "https://api.soniox.com/v1";
@@ -10,14 +10,12 @@ const POLL_INTERVAL_MS = 2000;
 const POLL_TIMEOUT_MS = 10 * 60 * 1000;
 
 export async function POST(request: Request) {
-  const auth = await requireUser();
+  const auth = await requireWorkspace();
   if (auth.error) return auth.error;
-  const { user, supabase } = auth;
+  const { user, supabase, workspace } = auth;
 
-  const usage = await getUsageSummary(supabase, user.id);
-  if (usage.remainingSeconds <= 0) {
-    return NextResponse.json({ error: "Monthly recording balance exhausted" }, { status: 403 });
-  }
+  const blocked = await enforceQuota(supabase, workspace);
+  if (blocked) return blocked;
 
   const formData = await request.formData();
   const file = formData.get("audio");
@@ -33,7 +31,7 @@ export async function POST(request: Request) {
   }
 
   const extension = file.name.includes(".") ? file.name.split(".").pop() : "webm";
-  const filename = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${extension}`;
+  const filename = `${workspace.id}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${extension}`;
   const arrayBuffer = await file.arrayBuffer();
 
   const { error: uploadError } = await supabase.storage
@@ -46,7 +44,7 @@ export async function POST(request: Request) {
 
   const sonioxFileForm = new FormData();
   sonioxFileForm.append("file", new Blob([arrayBuffer], { type: file.type || "application/octet-stream" }), file.name);
-  sonioxFileForm.append("client_reference_id", user.id);
+  sonioxFileForm.append("client_reference_id", workspace.id);
 
   const uploadToSoniox = await fetch(`${SONIOX_BASE_URL}/files`, {
     method: "POST",
@@ -72,7 +70,7 @@ export async function POST(request: Request) {
       language_hints: ["ar", "en"],
       enable_speaker_diarization: true,
       enable_language_identification: true,
-      client_reference_id: user.id,
+      client_reference_id: workspace.id,
     }),
   });
 
@@ -98,6 +96,7 @@ export async function POST(request: Request) {
   const { data: meeting, error: meetingError } = await supabase
     .from("meetings")
     .insert({
+      workspace_id: workspace.id,
       user_id: user.id,
       title: title || null,
       transcript,
@@ -119,12 +118,20 @@ export async function POST(request: Request) {
     await processMeetingArtifacts({
       supabase,
       userId: user.id,
+      workspaceId: workspace.id,
       meetingId: meeting.id,
       transcript,
       fallbackTitle: title || null,
     });
   } catch (error) {
-    await supabase.from("meetings").update({ processing_status: "error", processing_error: error instanceof Error ? error.message : "Processing failed" }).eq("id", meeting.id).eq("user_id", user.id);
+    await supabase
+      .from("meetings")
+      .update({
+        processing_status: "error",
+        processing_error: error instanceof Error ? error.message : "Processing failed",
+      })
+      .eq("id", meeting.id)
+      .eq("workspace_id", workspace.id);
     throw error;
   }
 

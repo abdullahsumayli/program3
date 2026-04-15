@@ -1,65 +1,206 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file gives the next coding agent a reliable snapshot of the current project state.
 
 @AGENTS.md
+
+## Project Direction
+
+This repo is a company meetings execution platform, not a study or lecture product.
+
+Core value:
+- Capture a meeting.
+- Process it automatically.
+- Turn it into transcript, summary, decisions, and executable tasks.
+- Help teams track what should happen after the meeting.
+
+The homepage and dashboard are intentionally positioned around execution outcomes, not around recording as the main story.
 
 ## Commands
 
 ```bash
-npm run dev          # Start dev server (http://localhost:3000)
-npm run build        # Production build
-npm run start        # Start production server
-npm run lint         # ESLint (flat config, eslint.config.mjs)
+npm run dev
+npm run lint
+npm run build
+npm run start
 ```
 
-No test framework is configured.
+No automated test suite is configured yet.
 
-## Architecture
+## Stack
 
-Meeting transcription and summarization web app. Next.js 16 App Router, Supabase (PostgreSQL), Soniox for real-time speech-to-text, Claude via OpenRouter for summarization. No authentication — single-user app with RLS disabled.
+- Next.js 16 App Router
+- React 19
+- TypeScript
+- Supabase
+- Soniox for live transcription
+- OpenRouter for structured meeting analysis
 
-### Data flow: recording a meeting
+## Current Product Flow
 
-1. Browser requests a temp Soniox API key via `POST /api/soniox-temp-key` (real key stays server-side)
-2. Browser opens WebSocket directly to Soniox using `@soniox/speech-to-text-web` SDK with the temp key
-3. Streaming tokens arrive in the browser; `useRecording` hook accumulates final/non-final tokens with speaker diarization
-4. Simultaneously, `MediaRecorder` captures raw audio as WebM
-5. On stop: audio uploaded to Supabase Storage via `POST /api/upload-audio`, meeting row created via `POST /api/meetings`, then `POST /api/summarize` calls OpenRouter (Claude) for summary + auto-generated title
-6. User redirected to meeting detail page
+### Live meeting flow
 
-### Key modules
+1. Browser asks the server for a temporary Soniox key via `POST /api/soniox-temp-key`.
+2. Browser opens the Soniox session directly from the client.
+3. Browser records audio locally with `MediaRecorder`.
+4. On stop, audio is uploaded to storage and the meeting is created.
+5. The summarize route extracts structured outputs:
+   - transcript
+   - summary
+   - key points
+   - decisions
+   - tasks
+6. Dashboard and meeting detail pages surface the outputs.
 
-- **`src/hooks/use-recording.ts`** — Core recording orchestrator. Manages Soniox WebSocket, MediaRecorder, timer, token accumulation, speaker segment building, and `beforeunload` protection.
-- **`src/lib/openrouter/summarize.ts`** — Server-only. Calls OpenRouter API (OpenAI SDK with custom baseURL). Handles hierarchical chunked summarization for long transcripts (>500K chars). Also generates meeting titles.
-- **`src/lib/i18n/context.tsx`** — Client-side `LanguageProvider` context. Supports `en`/`ar` with RTL. Locale stored in localStorage and synced to the `settings` table. Use `useLanguage()` hook and `t()` for translations.
-- **`src/lib/supabase/client.ts`** vs **`server.ts`** — Browser uses `createBrowserClient`, server components/routes use `createServerClient` with cookie handling.
+### Uploaded recording flow
 
-### Translations
+1. User uploads an existing recording.
+2. File is stored.
+3. Meeting processing runs through the same analysis pipeline.
+4. Outputs appear in meetings, decisions, and tasks views.
 
-UI strings live in `public/locales/en.json` and `public/locales/ar.json`. Access via `const { t } = useLanguage()` then `t("key.path")`.
+## Key Modules
 
-### Database
+- `src/components/dashboard/company-dashboard.tsx`
+  Main execution-focused homepage/dashboard.
 
-Schema in `supabase/migrations/001_initial_schema.sql`. Tables: `tracks`, `meetings`, `tags`, `meeting_tags`, `settings` (singleton row, id=1). Full-text search via generated `tsvector` column on meetings using `simple` dictionary (works for Arabic + English).
+- `src/components/recording/recording-session.tsx`
+  Recording entry point and recording UI state.
 
-### API routes
+- `src/components/recording/mic-test.tsx`
+  Microphone readiness check and user-facing mic errors.
 
-All under `src/app/api/`. CRUD routes for tracks, meetings (including `[id]` dynamic route), settings, tags. Special routes: `soniox-temp-key`, `summarize`, `health`, `search`, `backup`, `export/[id]`, `upload-audio`.
+- `src/hooks/use-recording-modes.ts`
+  Recording start/stop orchestration, start timeout handling, cancel-start logic.
 
-### Styling
+- `src/lib/meeting-processing.ts`
+  Meeting processing helpers used by API routes.
 
-Tailwind CSS v4 via `@tailwindcss/postcss`. Light mode only. RTL handled by `html[dir="rtl"]` set dynamically by `LanguageProvider`. Fonts: Inter (Latin) + Noto Sans Arabic, priority swaps based on direction. Custom UI components in `src/components/ui/`.
+- `src/lib/meetings.ts`
+  Meeting loading, task/decision shaping, and dashboard data helpers.
 
-### Path alias
+- `src/lib/i18n/context.tsx`
+  Client language context with `en` and `ar`, including RTL support.
 
-`@/*` maps to `./src/*` (configured in tsconfig.json).
+- `src/lib/supabase/*`
+  Browser/server auth and Supabase helpers.
 
-## Environment variables
+## API Surface In Active Use
 
-Required in `.env.local` (see `.env.local.example`):
-- `SONIOX_API_KEY` — server-only, used to issue temp keys
-- `OPENROUTER_API_KEY` — server-only, for Claude summarization
-- `NEXT_PUBLIC_SUPABASE_URL` — public Supabase project URL
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY` — public Supabase anon key
-- `SUPABASE_SERVICE_ROLE_KEY` — server-only, for storage operations
+- `src/app/api/dashboard/route.ts`
+- `src/app/api/meetings/route.ts`
+- `src/app/api/meetings/[id]/route.ts`
+- `src/app/api/meetings/upload/route.ts`
+- `src/app/api/recording-sessions/route.ts`
+- `src/app/api/recording-sessions/[id]/route.ts`
+- `src/app/api/soniox-temp-key/route.ts`
+- `src/app/api/summarize/route.ts`
+- `src/app/api/tasks/[id]/route.ts`
+- `src/app/api/upload-audio/route.ts`
+- `src/app/api/health/route.ts`
+- `src/app/api/settings/route.ts`
+
+## Current Database Shape
+
+The local working tree contains three migrations:
+
+- `supabase/migrations/001_company_meetings_baseline.sql`
+- `supabase/migrations/002_workspaces.sql`
+- `supabase/migrations/003_billing.sql`
+
+The earlier student/lecture/tracks schema is no longer the product direction.
+
+## Current Working Tree Status
+
+There are two layers in the project right now:
+
+### Stable shipped layer
+
+Already pushed and intended to work as the current product:
+- company-meetings positioning
+- execution-first dashboard
+- recording and upload flows
+- transcript, summary, decisions, tasks
+- settings connection health check
+- Arabic localization fixes
+- recording start timeout and clearer mic-error handling
+
+### Larger local layer in progress
+
+Present in the working tree and builds successfully, but should be treated as in-progress product expansion:
+- workspaces
+- workspace members
+- invites
+- billing
+- email helpers
+- cron reminders
+- pricing page
+
+Relevant paths:
+- `src/app/api/workspaces/*`
+- `src/app/api/billing/*`
+- `src/app/api/cron/task-reminders/route.ts`
+- `src/app/invite/[token]/*`
+- `src/app/pricing/page.tsx`
+- `src/app/settings/workspace/*`
+- `src/app/settings/billing/*`
+- `src/components/workspace/workspace-switcher.tsx`
+- `src/lib/workspace/*`
+- `src/lib/billing/*`
+- `src/lib/email/*`
+- `src/lib/supabase/service.ts`
+- `vercel.json`
+
+## Environment Variables
+
+Base product:
+- `SONIOX_API_KEY`
+- `OPENROUTER_API_KEY`
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+
+Additional in-progress SaaS layer:
+- `NEXT_PUBLIC_APP_URL`
+- `MOYASAR_SECRET_KEY`
+- `MOYASAR_PUBLISHABLE_KEY`
+- `MOYASAR_WEBHOOK_SECRET`
+- `RESEND_API_KEY`
+- `RESEND_FROM_EMAIL`
+- `CRON_SECRET`
+
+See `.env.local.example`.
+
+## Localization Notes
+
+Translations live in:
+- `public/locales/en.json`
+- `public/locales/ar.json`
+
+Recent fixes addressed corrupted Arabic strings in dashboard and microphone-status UI.
+
+If Arabic text appears as question marks or mojibake again, check:
+- file encoding
+- copied strings in locale JSON
+- whether the key exists in both locale files
+
+## Known Follow-Up Areas
+
+These are the main engineering follow-ups still worth doing:
+
+1. Clean and finish the workspace/billing layer.
+2. Update README and env documentation when that layer is officially adopted.
+3. Add missing translation coverage for invite and billing/workspace copy.
+4. Remove any remaining mojibake in non-shipped local UI files.
+5. Add a real test strategy for critical flows.
+
+## Verification Baseline
+
+Before shipping changes, at minimum run:
+
+```bash
+npm run lint
+npm run build
+```
+
+Both were passing on the current local working tree at the time this file was updated.
