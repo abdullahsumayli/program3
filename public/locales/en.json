@@ -7,6 +7,15 @@
     "dashboard": "Dashboard",
     "minutesLeft": "{count} min left"
   },
+  "settings": {
+    "title": "Settings",
+    "subtitle": "Verify the service connections used by the product.",
+    "connectionStatus": "Connection status",
+    "checkPrompt": "Run the connection test to verify the configured keys.",
+    "allConnected": "All required services are connected.",
+    "connectionIssues": "One or more services need attention.",
+    "testConnection": "Test connection"
+  },
   "auth": {
     "signIn": "Sign in",
     "signUp": "Sign up",

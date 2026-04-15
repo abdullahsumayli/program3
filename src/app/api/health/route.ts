@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/supabase/auth";
 
+type ServiceHealth = {
+  configured: boolean;
+  connected: boolean;
+  label: string;
+};
+
 // Requires auth so anonymous visitors can't use it to probe our quota usage.
 export async function GET() {
   const auth = await requireUser();
@@ -12,44 +18,69 @@ export async function GET() {
     checkSupabase(),
   ]);
 
-  return NextResponse.json({ soniox, openrouter, supabase: supabaseStatus });
+  const allConnected = soniox.connected && openrouter.connected && supabaseStatus.connected;
+
+  return NextResponse.json({
+    ok: allConnected,
+    services: {
+      supabase: supabaseStatus,
+      soniox,
+      openrouter,
+    },
+  });
 }
 
-async function checkSoniox(): Promise<"connected" | "disconnected"> {
+async function checkSoniox(): Promise<ServiceHealth> {
   const key = process.env.SONIOX_API_KEY;
-  if (!key) return "disconnected";
+  if (!key) {
+    return { configured: false, connected: false, label: "Missing API key" };
+  }
   try {
     const res = await fetch("https://api.soniox.com/v1/auth/temporary-api-key", {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
       body: JSON.stringify({ usage_type: "transcribe_websocket", expires_in_seconds: 60 }),
     });
-    return res.ok ? "connected" : "disconnected";
+    return {
+      configured: true,
+      connected: res.ok,
+      label: res.ok ? "Connected" : `Request failed (${res.status})`,
+    };
   } catch {
-    return "disconnected";
+    return { configured: true, connected: false, label: "Network request failed" };
   }
 }
 
-async function checkOpenRouter(): Promise<"connected" | "disconnected"> {
+async function checkOpenRouter(): Promise<ServiceHealth> {
   const key = process.env.OPENROUTER_API_KEY;
-  if (!key) return "disconnected";
+  if (!key) {
+    return { configured: false, connected: false, label: "Missing API key" };
+  }
   try {
     const res = await fetch("https://openrouter.ai/api/v1/models", {
       headers: { Authorization: `Bearer ${key}` },
     });
-    return res.ok ? "connected" : "disconnected";
+    return {
+      configured: true,
+      connected: res.ok,
+      label: res.ok ? "Connected" : `Request failed (${res.status})`,
+    };
   } catch {
-    return "disconnected";
+    return { configured: true, connected: false, label: "Network request failed" };
   }
 }
 
-async function checkSupabase(): Promise<"connected" | "disconnected"> {
+async function checkSupabase(): Promise<ServiceHealth> {
   try {
     const { createClient } = await import("@/lib/supabase/server");
     const supabase = await createClient();
     const { error } = await supabase.from("settings").select("user_id").limit(1);
-    return error ? "disconnected" : "connected";
+    return {
+      configured: true,
+      connected: !error,
+      label: error ? error.message : "Connected",
+    };
   } catch {
-    return "disconnected";
+    return { configured: false, connected: false, label: "Supabase client failed" };
   }
 }
