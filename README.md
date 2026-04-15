@@ -1,36 +1,96 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Program3
 
-## Getting Started
+Program3 is a company meeting management platform built for internal teams. The product is focused on one flow only: capture a meeting, process it automatically, then turn it into clear decisions and executable tasks.
 
-First, run the development server:
+## What It Does
+
+- Record a live meeting inside the app.
+- Upload an existing meeting recording.
+- Generate a full transcript automatically.
+- Produce a structured summary and key highlights.
+- Extract `Decisions` from the meeting.
+- Extract `Tasks` with a clear description, owner, due date, and status (`in_progress` or `completed`).
+- Track all meetings, decisions, and task progress from one dashboard.
+- Enforce a monthly usage limit of `120` minutes per user before recording starts.
+
+## Product Scope
+
+This repo has been refocused away from students, lectures, and study workflows. The current scope is company meetings only.
+
+## Stack
+
+- Next.js 16
+- React 19
+- TypeScript
+- Supabase
+- Soniox for speech-to-text
+- OpenRouter for structured meeting analysis
+
+## Environment Variables
+
+Create a local environment file and fill in the required keys:
+
+```bash
+cp .env.local.example .env.local
+```
+
+Required values:
+
+- `SONIOX_API_KEY`
+- `OPENROUTER_API_KEY`
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+
+## Local Setup
+
+1. Install dependencies.
+
+```bash
+npm install
+```
+
+2. Create your local env file.
+
+```bash
+cp .env.local.example .env.local
+```
+
+3. Apply the Supabase migrations in order.
+
+Important for the current product model:
+
+- `supabase/migrations/005_company_meetings_platform.sql`
+- `supabase/migrations/006_remove_tracks_runtime.sql`
+
+4. Start the dev server.
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+5. Open `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Useful Scripts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run dev
+npm run lint
+npm run build
+npm run start
+```
 
-## Learn More
+## Verification
 
-To learn more about Next.js, take a look at the following resources:
+The current refactor has been validated with:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npm run lint
+npm run build
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Notes
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Recording is blocked when the user has no remaining monthly minutes.
+- Meetings can be created either from live recording or uploaded audio.
+- The dashboard is the central view for meetings, decisions, tasks, and usage.
