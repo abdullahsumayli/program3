@@ -10,12 +10,14 @@ export function MicTest() {
   const [testing, setTesting] = useState(false);
   const [level, setLevel] = useState(0);
   const [result, setResult] = useState<"idle" | "ok" | "error">("idle");
+  const [errorKey, setErrorKey] = useState<"recording.micError" | "recording.micPermissionDenied" | "recording.micDeviceNotFound">("recording.micError");
   const cleanupRef = useRef<(() => void) | null>(null);
 
   const runTest = async () => {
     setTesting(true);
     setResult("idle");
     setLevel(0);
+    setErrorKey("recording.micError");
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -52,9 +54,20 @@ export function MicTest() {
       tick();
 
       cleanupRef.current = cleanup;
-    } catch {
+    } catch (error) {
       setTesting(false);
       setResult("error");
+      if (error instanceof DOMException) {
+        if (error.name === "NotAllowedError" || error.name === "SecurityError") {
+          setErrorKey("recording.micPermissionDenied");
+          return;
+        }
+        if (error.name === "NotFoundError" || error.name === "DevicesNotFoundError") {
+          setErrorKey("recording.micDeviceNotFound");
+          return;
+        }
+      }
+      setErrorKey("recording.micError");
     }
   };
 
@@ -85,7 +98,7 @@ export function MicTest() {
       {result === "error" && !testing && (
         <span className="flex items-center gap-1 text-xs text-red-600">
           <MicOff size={14} />
-          {t("recording.micError")}
+          {t(errorKey)}
         </span>
       )}
     </div>

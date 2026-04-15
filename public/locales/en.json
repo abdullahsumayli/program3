@@ -125,6 +125,11 @@
     "micTitle": "Room microphone",
     "micDescription": "Use the microphone when you are physically inside the meeting room.",
     "micDetail": "Best for in-person meetings around the same table.",
-    "startingHelp": "Approve the microphone or screen-share prompt to begin. If it stays stuck, cancel and try microphone only."
+    "startingHelp": "Approve the microphone or screen-share prompt to begin. If it stays stuck, cancel and try microphone only.",
+    "testMic": "Test mic",
+    "micReady": "Microphone is ready",
+    "micError": "Microphone test failed",
+    "micPermissionDenied": "Microphone permission was denied",
+    "micDeviceNotFound": "No microphone was found"
   }
 }
