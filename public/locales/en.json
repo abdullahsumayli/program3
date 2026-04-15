@@ -59,7 +59,10 @@
     "uploadTitlePlaceholder": "Optional title",
     "uploadFileHint": "Supported formats include mp3, wav, m4a, mp4, and webm.",
     "uploadSubmit": "Upload and process",
-    "quotaEmpty": "Your monthly 120-minute balance is exhausted. Recording is blocked until the next cycle.",
+    "quotaEmpty": "Your monthly minute balance is exhausted. Recording is blocked until the next cycle.",
+    "quotaEmptyDynamic": "Your monthly {limit}-minute balance is exhausted. Recording is blocked until the next cycle.",
+    "usageMeter": "{used} / {limit} min used",
+    "upgradeCta": "Upgrade",
     "quotaWarning": "Remaining balance is low.",
     "sourceLive": "Live recording",
     "sourceUpload": "Uploaded file",
@@ -121,6 +124,7 @@
     "remoteDetail": "Best for Zoom, Meet, Teams, or any online company meeting.",
     "micTitle": "Room microphone",
     "micDescription": "Use the microphone when you are physically inside the meeting room.",
-    "micDetail": "Best for in-person meetings around the same table."
+    "micDetail": "Best for in-person meetings around the same table.",
+    "startingHelp": "Approve the microphone or screen-share prompt to begin. If it stays stuck, cancel and try microphone only."
   }
 }

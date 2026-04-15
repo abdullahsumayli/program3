@@ -135,6 +135,18 @@ export function RecordingSession({ onFinished }: { onFinished: () => void }) {
     await recording.startRecording(selectedMode);
   };
 
+  const handleCancelStart = async () => {
+    recording.cancelStart();
+    await updateRecordingSession({
+      status: "error",
+      ended_at: new Date().toISOString(),
+      last_error_status: "start_cancelled",
+      last_error_message: "Recording start was cancelled before the session became active.",
+    });
+    setRecordingSessionId(null);
+    recordingSessionIdRef.current = null;
+  };
+
   const handleStop = async () => {
     const { transcript, segments, duration, audioBlob } = await recording.stopRecording();
     setSummarizing(true);
@@ -228,9 +240,16 @@ export function RecordingSession({ onFinished }: { onFinished: () => void }) {
             <div className="flex gap-2">
               {isIdle && <Button onClick={handleStart} size="lg"><Mic size={18} />{t("recording.startMeeting")}</Button>}
               {isRecording && <Button onClick={handleStop} variant="danger" size="lg"><Square size={16} />{t("recording.stop")}</Button>}
+              {isStarting && <Button variant="ghost" onClick={() => void handleCancelStart()}>{t("common.cancel")}</Button>}
               {isIdle && <Button variant="ghost" onClick={onFinished}>{t("common.cancel")}</Button>}
             </div>
           </div>
+
+          {isStarting && (
+            <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700">
+              {t("recording.startingHelp")}
+            </div>
+          )}
 
           {isIdle && (
             <div className="mb-5 grid gap-3 md:grid-cols-2">
