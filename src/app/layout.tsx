@@ -1,5 +1,6 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import { Inter, Noto_Sans_Arabic } from "next/font/google";
+import type { ReactNode } from "react";
 import "./globals.css";
 import { LanguageProvider } from "@/lib/i18n/context";
 import { Header } from "@/components/layout/header";
@@ -15,21 +16,14 @@ const notoArabic = Noto_Sans_Arabic({
 });
 
 export const metadata: Metadata = {
-  title: "Meeting Assistant",
-  description: "Record, transcribe, and summarize your meetings",
+  title: "Meeting OS",
+  description: "Corporate meeting transcription, summaries, decisions, and task tracking.",
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <html
-      lang="en"
-      className={`${inter.variable} ${notoArabic.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col bg-gray-50 text-gray-900 font-sans">
+    <html lang="en" className={`${inter.variable} ${notoArabic.variable} h-full antialiased`}>
+      <body className="min-h-full flex flex-col bg-slate-50 text-slate-900 font-sans">
         <LanguageProvider>
           <Header />
           <main className="flex-1">{children}</main>

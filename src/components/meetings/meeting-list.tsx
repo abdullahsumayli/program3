@@ -1,34 +1,27 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useState } from "react";
 import { MeetingItem } from "./meeting-item";
 import { useLanguage } from "@/lib/i18n/context";
-import type { Meeting, TrackType } from "@/lib/supabase/types";
+import type { Meeting } from "@/lib/supabase/types";
 
-export function MeetingList({
-  trackId,
-  trackType = "meetings",
-}: {
-  trackId: string;
-  trackType?: TrackType;
-}) {
+export function MeetingList() {
   const { t } = useLanguage();
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(() => {
     setLoading(true);
-    fetch(`/api/meetings?track_id=${trackId}`)
+    fetch("/api/meetings")
       .then((r) => r.json())
       .then((data) => setMeetings(Array.isArray(data) ? data : []))
       .finally(() => setLoading(false));
-  }, [trackId]);
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       void load();
     }, 0);
-
     return () => clearTimeout(timer);
   }, [load]);
 
@@ -37,25 +30,8 @@ export function MeetingList({
     load();
   };
 
-  const isLecture = trackType === "lectures";
+  if (loading) return <div className="py-8 text-center text-slate-500">{t("common.loading")}</div>;
+  if (meetings.length === 0) return <div className="py-8 text-center text-slate-500">{t("dashboard.noMeetings")}</div>;
 
-  if (loading) {
-    return <div className="py-8 text-center text-gray-500">{t("common.loading")}</div>;
-  }
-
-  if (meetings.length === 0) {
-    return (
-      <div className="py-8 text-center text-gray-500">
-        {t(isLecture ? "track.noLectures" : "track.noMeetings")}
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-2">
-      {meetings.map((m) => (
-        <MeetingItem key={m.id} meeting={m} trackId={trackId} onDelete={deleteMeeting} />
-      ))}
-    </div>
-  );
+  return <div className="space-y-2">{meetings.map((m) => <MeetingItem key={m.id} meeting={m} onDelete={deleteMeeting} />)}</div>;
 }

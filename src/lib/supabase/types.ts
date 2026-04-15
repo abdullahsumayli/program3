@@ -1,17 +1,4 @@
-export type TrackType = "meetings" | "lectures";
-
-export type Track = {
-  id: string;
-  name: string;
-  type: TrackType;
-  created_at: string;
-};
-
-export type TrackWithCount = Track & {
-  meeting_count: number;
-};
-
-export type TranscriptSegment = {
+﻿export type TranscriptSegment = {
   speaker_id: number;
   speaker_name?: string;
   text: string;
@@ -20,37 +7,60 @@ export type TranscriptSegment = {
   is_final?: boolean;
 };
 
+export type MeetingSource = "live_recording" | "uploaded_recording";
+export type MeetingProcessingStatus = "processing" | "completed" | "error";
+
 export type Meeting = {
   id: string;
-  track_id: string;
   title: string | null;
   transcript: string;
   transcript_segments: TranscriptSegment[] | null;
   summary: string | null;
+  key_points: string[] | null;
   notes: string | null;
   duration: number;
   audio_url: string | null;
+  source_type: MeetingSource;
+  processing_status: MeetingProcessingStatus;
+  processing_error: string | null;
   created_at: string;
   updated_at: string;
 };
 
-export type Tag = {
+export type MeetingDecision = {
   id: string;
-  name: string;
-  color: string;
+  meeting_id: string;
+  user_id: string;
+  content: string;
   created_at: string;
 };
 
-export type MeetingTag = {
+export type TaskStatus = "in_progress" | "completed";
+
+export type MeetingTask = {
+  id: string;
   meeting_id: string;
-  tag_id: string;
+  user_id: string;
+  description: string;
+  owner_name: string | null;
+  due_date: string | null;
+  status: TaskStatus;
+  created_at: string;
+  updated_at: string;
 };
 
 export type Settings = {
-  id: number;
+  user_id: string;
   system_prompt: string;
   language: "en" | "ar";
   updated_at: string;
+};
+
+export type UsageSummary = {
+  limitMinutes: number;
+  usedMinutes: number;
+  remainingMinutes: number;
+  remainingSeconds: number;
 };
 
 export type RecordingSessionStatus = "starting" | "recording" | "completed" | "interrupted" | "error";
@@ -59,7 +69,6 @@ export type RecordingSession = {
   id: string;
   user_id: string;
   user_email: string | null;
-  track_id: string | null;
   meeting_id: string | null;
   recording_mode: "remote-share" | "mic-only";
   status: RecordingSessionStatus;
@@ -74,4 +83,11 @@ export type RecordingSession = {
   last_heartbeat_at: string;
   created_at: string;
   updated_at: string;
+};
+
+export type DashboardData = {
+  usage: UsageSummary;
+  meetings: Meeting[];
+  decisions: Array<MeetingDecision & { meeting_title: string | null }>;
+  tasks: Array<MeetingTask & { meeting_title: string | null }>;
 };

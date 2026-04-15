@@ -1,235 +1,162 @@
-"use client";
+﻿"use client";
 
-import { useState } from "react";
 import Link from "next/link";
-import {
-  ArrowLeft,
-  ArrowRight,
-  Download,
-  Edit2,
-  RefreshCw,
-  Save,
-  X,
-  Loader2,
-} from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
 import { useLanguage } from "@/lib/i18n/context";
-import { formatDate, formatDuration } from "@/lib/utils";
-import type { Meeting } from "@/lib/supabase/types";
+import type { Meeting, MeetingDecision, MeetingTask, TaskStatus } from "@/lib/supabase/types";
 
-export function MeetingDetail({ meeting: initial, trackId }: { meeting: Meeting; trackId: string }) {
+export function MeetingDetail({ meeting: initialMeeting, decisions: initialDecisions, tasks: initialTasks }: { meeting: Meeting; decisions: MeetingDecision[]; tasks: MeetingTask[] }) {
   const { t, locale } = useLanguage();
-  const [meeting, setMeeting] = useState(initial);
-  const [editingSummary, setEditingSummary] = useState(false);
-  const [summaryDraft, setSummaryDraft] = useState(meeting.summary ?? "");
-  const [notesDraft, setNotesDraft] = useState(meeting.notes ?? "");
+  const [meeting, setMeeting] = useState(initialMeeting);
+  const [decisions, setDecisions] = useState(initialDecisions);
+  const [tasks, setTasks] = useState(initialTasks);
   const [regenerating, setRegenerating] = useState(false);
-  const [exportOpen, setExportOpen] = useState(false);
-  const ArrowIcon = locale === "ar" ? ArrowRight : ArrowLeft;
 
-  const saveSummary = async () => {
-    const res = await fetch(`/api/meetings/${meeting.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ summary: summaryDraft }),
-    });
-    const updated = await res.json();
-    setMeeting(updated);
-    setEditingSummary(false);
+  const reload = async () => {
+    const [meetingResponse, dashboardResponse] = await Promise.all([
+      fetch(`/api/meetings/${meeting.id}`),
+      fetch(`/api/dashboard`),
+    ]);
+
+    const meetingData = await meetingResponse.json();
+    const dashboardData = await dashboardResponse.json();
+
+    setMeeting(meetingData);
+    setDecisions(dashboardData.decisions.filter((decision: MeetingDecision & { meeting_title: string | null }) => decision.meeting_id === meeting.id));
+    setTasks(dashboardData.tasks.filter((task: MeetingTask & { meeting_title: string | null }) => task.meeting_id === meeting.id));
   };
 
-  const saveNotes = async () => {
-    const res = await fetch(`/api/meetings/${meeting.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ notes: notesDraft }),
-    });
-    const updated = await res.json();
-    setMeeting(updated);
-  };
-
-  const regenerateSummary = async () => {
+  const regenerate = async () => {
     setRegenerating(true);
     try {
-      const res = await fetch("/api/summarize", {
+      const response = await fetch("/api/summarize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ meetingId: meeting.id, transcript: meeting.transcript }),
+        body: JSON.stringify({ meetingId: meeting.id, transcript: meeting.transcript, fallbackTitle: meeting.title }),
       });
-      const data = await res.json();
-      if (data.summary) {
-        setMeeting({ ...meeting, summary: data.summary, title: data.title ?? meeting.title });
-        setSummaryDraft(data.summary);
-      }
+      if (!response.ok) throw new Error("Failed to regenerate");
+      await reload();
     } finally {
       setRegenerating(false);
     }
   };
 
-  const exportAs = async (format: "pdf" | "docx" | "txt" | "md") => {
-    const res = await fetch(`/api/export/${meeting.id}?format=${format}`);
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    const ext = format === "docx" ? "docx" : format;
-    a.download = `${meeting.title || "meeting"}.${ext}`;
-    a.click();
-    URL.revokeObjectURL(url);
-    setExportOpen(false);
+  const updateTask = async (taskId: string, updates: Partial<MeetingTask>) => {
+    await fetch(`/api/tasks/${taskId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates),
+    });
+    await reload();
   };
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8">
-      <Link
-        href={`/track/${trackId}`}
-        className="mb-6 inline-flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900"
-      >
-        <ArrowIcon size={16} />
-        {t("track.backToHome")}
-      </Link>
-
-      <div className="mb-6 flex items-start justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-bold text-gray-900">
-            {meeting.title || t("track.untitled")}
-          </h1>
-          <div className="mt-1 text-sm text-gray-500">
-            {formatDate(meeting.created_at, locale)} · {formatDuration(meeting.duration)}
-          </div>
-        </div>
-        <div className="relative">
-          <Button variant="outline" size="sm" onClick={() => setExportOpen(!exportOpen)}>
-            <Download size={14} />
-            {t("meeting.export")}
-          </Button>
-          {exportOpen && (
-            <div className="absolute end-0 mt-1 w-48 rounded-lg border border-gray-200 bg-white shadow-lg z-10">
-              <button
-                className="block w-full px-4 py-2 text-start text-sm hover:bg-gray-50"
-                onClick={() => exportAs("pdf")}
-              >
-                {t("meeting.exportPdf")}
-              </button>
-              <button
-                className="block w-full px-4 py-2 text-start text-sm hover:bg-gray-50"
-                onClick={() => exportAs("docx")}
-              >
-                {t("meeting.exportWord")}
-              </button>
-              <button
-                className="block w-full px-4 py-2 text-start text-sm hover:bg-gray-50"
-                onClick={() => exportAs("md")}
-              >
-                {t("meeting.exportMarkdown")}
-              </button>
-              <button
-                className="block w-full px-4 py-2 text-start text-sm hover:bg-gray-50"
-                onClick={() => exportAs("txt")}
-              >
-                {t("meeting.exportText")}
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {meeting.audio_url && (
-        <div className="mb-6">
-          <audio controls src={meeting.audio_url} className="w-full" />
-        </div>
-      )}
-
-      <Tabs defaultValue="summary">
-        <TabsList>
-          <TabsTrigger value="summary">{t("meeting.summary")}</TabsTrigger>
-          <TabsTrigger value="transcript">{t("meeting.transcript")}</TabsTrigger>
-          <TabsTrigger value="notes">{t("meeting.notes")}</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="summary">
-          <div className="rounded-xl border border-gray-200 bg-white p-6">
-            <div className="mb-3 flex items-center justify-end gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={regenerateSummary}
-                disabled={regenerating}
-              >
-                {regenerating ? (
-                  <Loader2 size={14} className="animate-spin" />
-                ) : (
-                  <RefreshCw size={14} />
-                )}
+    <div className="mx-auto max-w-6xl px-4 py-8">
+      <Link href="/" className="text-sm text-slate-500 hover:text-slate-900">{t("meeting.back")}</Link>
+      <div className="mt-4 grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+        <div className="space-y-6">
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h1 className="text-3xl font-semibold text-slate-900">{meeting.title || t("common.untitledMeeting")}</h1>
+                <div className="mt-2 text-sm text-slate-500">{new Date(meeting.created_at).toLocaleString(locale === "ar" ? "ar-SA" : "en-US")} · {Math.ceil((meeting.duration ?? 0) / 60)} min</div>
+              </div>
+              <Button variant="outline" onClick={regenerate} disabled={regenerating}>
+                {regenerating ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
                 {t("meeting.regenerate")}
               </Button>
-              {!editingSummary ? (
-                <Button variant="outline" size="sm" onClick={() => setEditingSummary(true)}>
-                  <Edit2 size={14} />
-                  {t("meeting.edit")}
-                </Button>
-              ) : (
-                <>
-                  <Button variant="outline" size="sm" onClick={() => setEditingSummary(false)}>
-                    <X size={14} />
-                    {t("meeting.cancel")}
-                  </Button>
-                  <Button size="sm" onClick={saveSummary}>
-                    <Save size={14} />
-                    {t("meeting.save")}
-                  </Button>
-                </>
-              )}
             </div>
-            {editingSummary ? (
-              <Textarea
-                value={summaryDraft}
-                onChange={(e) => setSummaryDraft(e.target.value)}
-                rows={14}
-              />
-            ) : (
-              <div className="whitespace-pre-wrap text-gray-800">
-                {meeting.summary || (
-                  <span className="text-gray-400">{t("meeting.noSummary")}</span>
-                )}
-              </div>
-            )}
+            {meeting.audio_url && <audio controls src={meeting.audio_url} className="mt-4 w-full" />}
           </div>
-        </TabsContent>
 
-        <TabsContent value="transcript">
-          <div className="rounded-xl border border-gray-200 bg-white p-6">
-            {meeting.transcript_segments && meeting.transcript_segments.length > 0 ? (
-              <div className="space-y-3">
-                {meeting.transcript_segments.map((seg, i) => (
-                  <div key={i} className="flex gap-3">
-                    <div className="flex-shrink-0 text-xs font-semibold text-blue-600">
-                      {seg.speaker_name || t("recording.speaker", { id: seg.speaker_id })}:
+          <SectionCard title={t("meeting.summary")}>
+            <div className="whitespace-pre-wrap text-sm leading-7 text-slate-700">{meeting.summary || t("meeting.noSummary")}</div>
+          </SectionCard>
+
+          <SectionCard title={t("meeting.transcript")}>
+            <div className="space-y-3 text-sm leading-7 text-slate-700">
+              {meeting.transcript_segments?.length
+                ? meeting.transcript_segments.map((segment, index) => (
+                    <div key={index} className="rounded-2xl bg-slate-50 p-3">
+                      <div className="mb-1 text-xs font-semibold text-slate-500">{segment.speaker_name || t("recording.speaker", { id: segment.speaker_id })}</div>
+                      <div>{segment.text}</div>
                     </div>
-                    <div className="text-gray-800">{seg.text}</div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="whitespace-pre-wrap text-gray-800">{meeting.transcript}</div>
-            )}
-          </div>
-        </TabsContent>
+                  ))
+                : meeting.transcript}
+            </div>
+          </SectionCard>
+        </div>
 
-        <TabsContent value="notes">
-          <div className="rounded-xl border border-gray-200 bg-white p-6">
-            <Textarea
-              value={notesDraft}
-              onChange={(e) => setNotesDraft(e.target.value)}
-              onBlur={saveNotes}
-              placeholder={t("meeting.notesPlaceholder")}
-              rows={10}
-            />
-          </div>
-        </TabsContent>
-      </Tabs>
+        <div className="space-y-6">
+          <SectionCard title={t("meeting.keyPoints")}>
+            <ul className="space-y-2 text-sm text-slate-700">{(meeting.key_points ?? []).map((point, index) => <li key={index} className="rounded-2xl bg-slate-50 p-3">{point}</li>)}</ul>
+          </SectionCard>
+
+          <SectionCard title={t("meeting.decisions")}>
+            <ul className="space-y-2 text-sm text-slate-700">{decisions.map((decision) => <li key={decision.id} className="rounded-2xl bg-slate-50 p-3">{decision.content}</li>)}</ul>
+          </SectionCard>
+
+          <SectionCard title={t("meeting.tasks")}>
+            <div className="space-y-4">{tasks.map((task) => <MeetingTaskEditor key={task.id} task={task} onSave={updateTask} />)}</div>
+          </SectionCard>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SectionCard({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+      <h2 className="mb-4 text-lg font-semibold text-slate-900">{title}</h2>
+      {children}
+    </section>
+  );
+}
+
+function MeetingTaskEditor({ task, onSave }: { task: MeetingTask; onSave: (taskId: string, updates: Partial<MeetingTask>) => Promise<void> }) {
+  const { t } = useLanguage();
+  const [owner, setOwner] = useState(task.owner_name ?? "");
+  const [dueDate, setDueDate] = useState(task.due_date ?? "");
+  const [status, setStatus] = useState<TaskStatus>(task.status);
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await onSave(task.id, { owner_name: owner || null, due_date: dueDate || null, status });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="rounded-2xl border border-slate-200 p-4">
+      <div className="text-sm font-medium text-slate-900">{task.description}</div>
+      <div className="mt-3 space-y-3">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-500">{t("meeting.owner")}</label>
+          <Input value={owner} onChange={(event) => setOwner(event.target.value)} placeholder={t("common.unassigned")} />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-500">{t("meeting.dueDate")}</label>
+          <Input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-500">{t("meeting.status")}</label>
+          <select value={status} onChange={(event) => setStatus(event.target.value as TaskStatus)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700">
+            <option value="in_progress">{t("common.inProgress")}</option>
+            <option value="completed">{t("common.completed")}</option>
+          </select>
+        </div>
+        <Button variant="outline" onClick={save} className="w-full justify-center" disabled={saving}>
+          {saving ? <Loader2 size={16} className="animate-spin" /> : null}
+          {t("common.save")}
+        </Button>
+      </div>
     </div>
   );
 }

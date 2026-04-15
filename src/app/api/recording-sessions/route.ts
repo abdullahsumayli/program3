@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/supabase/auth";
+import { getUsageSummary } from "@/lib/meetings";
 
 export async function POST(request: Request) {
   const auth = await requireUser();
@@ -12,17 +13,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "recording_mode required" }, { status: 400 });
   }
 
-  if (body.track_id) {
-    const { data: track } = await supabase
-      .from("tracks")
-      .select("id")
-      .eq("id", body.track_id)
-      .eq("user_id", user.id)
-      .single();
-
-    if (!track) {
-      return NextResponse.json({ error: "Track not found" }, { status: 404 });
-    }
+  const usage = await getUsageSummary(supabase, user.id);
+  if (usage.remainingSeconds <= 0) {
+    return NextResponse.json({ error: "Monthly recording balance exhausted" }, { status: 403 });
   }
 
   const { data, error } = await supabase
@@ -30,7 +23,6 @@ export async function POST(request: Request) {
     .insert({
       user_id: user.id,
       user_email: user.email ?? null,
-      track_id: body.track_id ?? null,
       recording_mode: body.recording_mode,
       status: body.status ?? "starting",
       system_audio_requested: body.system_audio_requested ?? false,
@@ -41,9 +33,6 @@ export async function POST(request: Request) {
     .select()
     .single();
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data);
 }
