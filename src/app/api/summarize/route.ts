@@ -8,8 +8,18 @@ export async function POST(request: Request) {
   const { user, supabase, workspace } = auth;
 
   const { meetingId, transcript, fallbackTitle } = await request.json();
-  if (!meetingId || !transcript || typeof transcript !== "string") {
-    return NextResponse.json({ error: "meetingId and transcript are required" }, { status: 400 });
+  if (!meetingId) {
+    return NextResponse.json({ error: "meetingId is required" }, { status: 400 });
+  }
+
+  const cleanTranscript = transcript && typeof transcript === "string" ? transcript.trim() : "";
+  if (!cleanTranscript) {
+    await supabase
+      .from("meetings")
+      .update({ processing_status: "completed" })
+      .eq("id", meetingId)
+      .eq("workspace_id", workspace.id);
+    return NextResponse.json({ summary: null, tasks: [], decisions: [] });
   }
 
   try {
@@ -18,7 +28,7 @@ export async function POST(request: Request) {
       userId: user.id,
       workspaceId: workspace.id,
       meetingId,
-      transcript,
+      transcript: cleanTranscript,
       fallbackTitle: fallbackTitle ?? null,
     });
 

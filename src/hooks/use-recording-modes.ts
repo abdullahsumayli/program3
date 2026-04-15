@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { SonioxClient, type Token } from "@soniox/speech-to-text-web";
+import type { SonioxClient, Token } from "@soniox/speech-to-text-web";
 
 type RecordingState = "idle" | "starting" | "recording" | "stopping" | "error";
 export type RecordingMode = "remote-share" | "mic-only";
@@ -216,11 +216,13 @@ export function useRecordingModes(options?: {
         }
         if (attemptId !== startAttemptRef.current) return;
 
+        const { SonioxClient } = await import("@soniox/speech-to-text-web");
         const sonioxStream = sourceStream.clone();
         const client = new SonioxClient({
           apiKey: async () => {
             let res: Response;
             try {
+              console.info("[Soniox] Requesting temp key…");
               res = await fetch("/api/soniox-temp-key", { method: "POST" });
             } catch (err) {
               throw new Error(
@@ -231,18 +233,21 @@ export function useRecordingModes(options?: {
             }
             const data = await res.json().catch(() => ({}));
             if (!res.ok || !data.api_key) {
+              console.error("[Soniox] Temp key failed:", res.status, data);
               throw new Error(
                 data.message ||
                   data.error ||
                   `Failed to get temp key (HTTP ${res.status})`
               );
             }
+            console.info("[Soniox] Temp key received, connecting…");
             return data.api_key;
           },
           keepAlive: true,
           keepAliveInterval: SONIOX_KEEPALIVE_INTERVAL_MS,
           onStarted: () => {
             if (attemptId !== startAttemptRef.current) return;
+            console.info("[Soniox] Session started, transcription active.");
             reconnectAttemptsRef.current = 0;
             setError(null);
             setState("recording");
