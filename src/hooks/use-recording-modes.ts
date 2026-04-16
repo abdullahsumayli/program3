@@ -36,6 +36,8 @@ export type RecordingDiagnosticsEvent =
 
 const SONIOX_MODEL = "stt-rt-v4";
 const STARTING_TIMEOUT_MS = 20000;
+const MAX_RECONNECT_ATTEMPTS = 5;
+const RECONNECT_DELAY_MS = 2000;
 
 export type SpeakerSegment = {
   speaker_id: number;
@@ -47,14 +49,12 @@ export type SpeakerSegment = {
 class MediaStreamAudioSource implements AudioSource {
   private recorder: MediaRecorder | null = null;
   private stream: MediaStream;
-  private handlers: AudioSourceHandlers | null = null;
 
   constructor(stream: MediaStream) {
     this.stream = stream;
   }
 
   async start(handlers: AudioSourceHandlers) {
-    this.handlers = handlers;
     const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
       ? "audio/webm;codecs=opus"
       : "audio/webm";
@@ -76,19 +76,14 @@ class MediaStreamAudioSource implements AudioSource {
       this.recorder.stop();
     }
     this.recorder = null;
-    this.handlers = null;
   }
 
   pause() {
-    if (this.recorder && this.recorder.state === "recording") {
-      this.recorder.pause();
-    }
+    if (this.recorder && this.recorder.state === "recording") this.recorder.pause();
   }
 
   resume() {
-    if (this.recorder && this.recorder.state === "paused") {
-      this.recorder.resume();
-    }
+    if (this.recorder && this.recorder.state === "paused") this.recorder.resume();
   }
 }
 
@@ -109,6 +104,7 @@ export function useRecordingModes(options?: {
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startTimeRef = useRef<number>(0);
   const systemStreamRef = useRef<MediaStream | null>(null);
   const combinedStreamRef = useRef<MediaStream | null>(null);
@@ -119,16 +115,13 @@ export function useRecordingModes(options?: {
   const hasStartedSessionRef = useRef(false);
   const systemAudioActiveRef = useRef(false);
   const startAttemptRef = useRef(0);
+  const reconnectCountRef = useRef(0);
+  const sonioxModuleRef = useRef<typeof import("@soniox/client") | null>(null);
 
   const cleanupActiveResources = useCallback(() => {
-    if (startingTimeoutRef.current) {
-      clearTimeout(startingTimeoutRef.current);
-      startingTimeoutRef.current = null;
-    }
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
+    if (startingTimeoutRef.current) { clearTimeout(startingTimeoutRef.current); startingTimeoutRef.current = null; }
+    if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; }
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     recordingRef.current?.cancel();
     recordingRef.current = null;
     saveRecorderRef.current?.stop?.();
@@ -145,6 +138,104 @@ export function useRecordingModes(options?: {
     systemAudioActiveRef.current = false;
   }, []);
 
+  const spawnSonioxSession = useCallback((attemptId: number) => {
+    const combined = combinedStreamRef.current;
+    if (!combined || !combined.getAudioTracks().some((t) => t.readyState === "live")) return;
+    if (isStoppingRef.current || attemptId !== startAttemptRef.current) return;
+    if (!sonioxModuleRef.current) return;
+
+    const { SonioxClient } = sonioxModuleRef.current;
+    const sonioxStream = combined.clone();
+
+    const client = new SonioxClient({
+      api_key: async () => {
+        console.info("[Soniox] Requesting temp key…");
+        const res = await fetch("/api/soniox-temp-key", { method: "POST" });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.api_key) {
+          console.error("[Soniox] Temp key failed:", res.status, data);
+          throw new Error(data.message || data.error || `Failed to get temp key (HTTP ${res.status})`);
+        }
+        console.info("[Soniox] Temp key received, connecting…");
+        return data.api_key;
+      },
+    });
+
+    const customSource = new MediaStreamAudioSource(sonioxStream);
+    const recording = client.realtime.record({
+      model: SONIOX_MODEL,
+      language_hints: ["ar", "en"],
+      enable_speaker_diarization: true,
+      enable_endpoint_detection: true,
+      source: customSource,
+    });
+    recordingRef.current = recording;
+
+    recording.on("connected", () => {
+      if (attemptId !== startAttemptRef.current) return;
+      console.info(`[Soniox] Session started (reconnect #${reconnectCountRef.current}), transcription active.`);
+      reconnectCountRef.current = 0;
+      setError(null);
+      setState("recording");
+      if (startingTimeoutRef.current) { clearTimeout(startingTimeoutRef.current); startingTimeoutRef.current = null; }
+      options?.onDiagnosticsEvent?.({ type: "session_started", systemAudioActive: systemAudioActiveRef.current });
+      if (!hasStartedSessionRef.current) {
+        hasStartedSessionRef.current = true;
+        startTimeRef.current = Date.now();
+        timerRef.current = setInterval(() => {
+          setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
+        }, 500);
+      }
+    });
+
+    recording.on("result", (result) => {
+      if (attemptId !== startAttemptRef.current) return;
+      const tokens = result.tokens ?? [];
+      const newFinal = tokens.filter((t) => t.is_final);
+      const newNonFinal = tokens.filter((t) => !t.is_final);
+      if (newFinal.length > 0) {
+        finalTokensRef.current = [...finalTokensRef.current, ...newFinal];
+        setFinalTokens((prev) => [...prev, ...newFinal]);
+      }
+      nonFinalTokensRef.current = newNonFinal;
+      setNonFinalTokens(newNonFinal);
+    });
+
+    recording.on("error", (err) => {
+      if (attemptId !== startAttemptRef.current || isStoppingRef.current) return;
+      console.warn("[Soniox] Session error:", err.message);
+      recordingRef.current = null;
+
+      const canRetry =
+        reconnectCountRef.current < MAX_RECONNECT_ATTEMPTS &&
+        combined.getAudioTracks().some((t) => t.readyState === "live");
+
+      if (canRetry) {
+        reconnectCountRef.current += 1;
+        console.info(`[Soniox] Reconnecting (attempt ${reconnectCountRef.current}/${MAX_RECONNECT_ATTEMPTS})…`);
+        options?.onDiagnosticsEvent?.({
+          type: "session_reconnecting",
+          attempt: reconnectCountRef.current,
+          status: "websocket_error",
+          message: err.message,
+        });
+        reconnectTimerRef.current = setTimeout(() => {
+          reconnectTimerRef.current = null;
+          spawnSonioxSession(attemptId);
+        }, RECONNECT_DELAY_MS);
+      } else {
+        console.error("[Soniox] Max reconnect attempts reached. Transcription stopped.");
+        options?.onDiagnosticsEvent?.({
+          type: "session_error",
+          status: "websocket_error",
+          message: err.message,
+          reconnectCount: reconnectCountRef.current,
+        });
+        setError(err.message);
+      }
+    });
+  }, [options]);
+
   const startRecording = useCallback(async (mode: RecordingMode) => {
     const attemptId = ++startAttemptRef.current;
     setState("starting");
@@ -160,6 +251,7 @@ export function useRecordingModes(options?: {
     nonFinalTokensRef.current = [];
     isStoppingRef.current = false;
     hasStartedSessionRef.current = false;
+    reconnectCountRef.current = 0;
 
     if (startingTimeoutRef.current) clearTimeout(startingTimeoutRef.current);
     startingTimeoutRef.current = setTimeout(() => {
@@ -207,8 +299,6 @@ export function useRecordingModes(options?: {
         });
       } else {
         combinedStream = micStream;
-        setSystemAudioActive(false);
-        systemAudioActiveRef.current = false;
       }
       combinedStreamRef.current = combinedStream;
 
@@ -219,92 +309,21 @@ export function useRecordingModes(options?: {
       saveRecorder.onstop = () => { setAudioBlob(new Blob(audioChunksRef.current, { type: saveMime })); };
       saveRecorder.start(1000);
 
-      const sonioxStream = combinedStream.clone();
-      const { SonioxClient } = await import("@soniox/client");
-
-      const client = new SonioxClient({
-        api_key: async () => {
-          console.info("[Soniox] Requesting temp key…");
-          let res: Response;
-          try {
-            res = await fetch("/api/soniox-temp-key", { method: "POST" });
-          } catch (err) {
-            throw new Error(`Network error contacting /api/soniox-temp-key: ${err instanceof Error ? err.message : String(err)}`);
-          }
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok || !data.api_key) {
-            console.error("[Soniox] Temp key failed:", res.status, data);
-            throw new Error(data.message || data.error || `Failed to get temp key (HTTP ${res.status})`);
-          }
-          console.info("[Soniox] Temp key received, connecting…");
-          return data.api_key;
-        },
-      });
-
-      const customSource = new MediaStreamAudioSource(sonioxStream);
-      const recording = client.realtime.record({
-        model: SONIOX_MODEL,
-        language_hints: ["ar", "en"],
-        enable_speaker_diarization: true,
-        enable_endpoint_detection: true,
-        source: customSource,
-      });
-      recordingRef.current = recording;
-
-      recording.on("connected", () => {
-        if (attemptId !== startAttemptRef.current) return;
-        console.info("[Soniox] Session started, transcription active.");
-        setError(null);
-        setState("recording");
-        if (startingTimeoutRef.current) { clearTimeout(startingTimeoutRef.current); startingTimeoutRef.current = null; }
-        options?.onDiagnosticsEvent?.({ type: "session_started", systemAudioActive: systemAudioActiveRef.current });
-        if (!hasStartedSessionRef.current) {
-          hasStartedSessionRef.current = true;
-          startTimeRef.current = Date.now();
-          timerRef.current = setInterval(() => {
-            setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
-          }, 500);
-        }
-      });
-
-      recording.on("result", (result) => {
-        if (attemptId !== startAttemptRef.current) return;
-        const tokens = result.tokens ?? [];
-        const newFinal = tokens.filter((t) => t.is_final);
-        const newNonFinal = tokens.filter((t) => !t.is_final);
-        if (newFinal.length > 0) {
-          finalTokensRef.current = [...finalTokensRef.current, ...newFinal];
-          setFinalTokens((prev) => [...prev, ...newFinal]);
-        }
-        nonFinalTokensRef.current = newNonFinal;
-        setNonFinalTokens(newNonFinal);
-      });
-
-      recording.on("error", (err) => {
-        if (attemptId !== startAttemptRef.current) return;
-        console.error("[Soniox] Recording error:", err);
-        options?.onDiagnosticsEvent?.({
-          type: "session_error",
-          status: "websocket_error",
-          message: err.message,
-          reconnectCount: 0,
-        });
-        setError(err.message);
-        setState("error");
-      });
-
+      sonioxModuleRef.current = await import("@soniox/client");
+      spawnSonioxSession(attemptId);
     } catch (err) {
       if (attemptId !== startAttemptRef.current) return;
       setError(err instanceof Error ? err.message : "Failed to start");
       setState("error");
       cleanupActiveResources();
     }
-  }, [cleanupActiveResources, options]);
+  }, [cleanupActiveResources, options, spawnSonioxSession]);
 
   const cancelStart = useCallback(() => {
     startAttemptRef.current += 1;
     isStoppingRef.current = false;
     hasStartedSessionRef.current = false;
+    reconnectCountRef.current = 0;
     setError(null);
     setNonFinalTokens([]);
     cleanupActiveResources();
@@ -321,6 +340,7 @@ export function useRecordingModes(options?: {
       isStoppingRef.current = true;
       setState("stopping");
       if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+      if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; }
       const finalDuration = Math.floor((Date.now() - startTimeRef.current) / 1000);
 
       const finish = () => {
@@ -355,8 +375,10 @@ export function useRecordingModes(options?: {
 
       const rec = recordingRef.current;
       if (rec) {
-        rec.stop().then(() => { setTimeout(finish, 150); }).catch(() => { finish(); });
-        setTimeout(() => { finish(); }, 15000);
+        let done = false;
+        const onDone = () => { if (done) return; done = true; setTimeout(finish, 150); };
+        rec.stop().then(onDone).catch(onDone);
+        setTimeout(onDone, 15000);
       } else {
         finish();
       }
@@ -366,6 +388,7 @@ export function useRecordingModes(options?: {
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
       cleanupActiveResources();
     };
   }, [cleanupActiveResources]);
@@ -378,16 +401,8 @@ export function useRecordingModes(options?: {
   }, [state]);
 
   return {
-    state,
-    finalTokens,
-    nonFinalTokens,
-    error,
-    elapsed,
-    audioBlob,
-    systemAudioActive,
-    startRecording,
-    cancelStart,
-    stopRecording,
+    state, finalTokens, nonFinalTokens, error, elapsed, audioBlob, systemAudioActive,
+    startRecording, cancelStart, stopRecording,
   };
 }
 
