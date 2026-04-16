@@ -2,10 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Languages, LogOut, Mic } from "lucide-react";
+import { Languages, LogOut, Mic, Settings } from "lucide-react";
 import { useEffect, useState } from "react";
-import { SettingsPanel } from "@/components/layout/settings-panel";
-import { WorkspaceSwitcher } from "@/components/workspace/workspace-switcher";
 import { useLanguage } from "@/lib/i18n/context";
 import { Button } from "@/components/ui/button";
 import { signOut } from "@/app/auth/actions";
@@ -27,22 +25,26 @@ export function Header() {
   if (isAuthPage) return null;
 
   return (
-    <header className="border-b border-gray-200 bg-white">
-      <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3">
-        <Link href="/" className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-white">
-            <Mic size={18} />
+    <header className="border-b border-slate-200 bg-white">
+      <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3">
+        <Link href="/" className="flex items-center gap-2.5">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-900 text-white">
+            <Mic size={16} />
           </div>
-          <div>
-            <div className="text-sm font-semibold text-slate-900">{t("app.title")}</div>
-            <div className="text-xs text-slate-500">{t("header.dashboard")}</div>
-          </div>
+          <span className="text-sm font-semibold text-slate-900">{t("app.title")}</span>
         </Link>
 
-        <div className="flex items-center gap-2">
-          <WorkspaceSwitcher />
-          {email && <span className="hidden max-w-[220px] truncate text-xs text-slate-500 sm:inline">{email}</span>}
-          <SettingsPanel />
+        <div className="flex items-center gap-1.5">
+          {email && (
+            <span className="hidden max-w-[180px] truncate rounded-full bg-slate-50 px-3 py-1 text-xs text-slate-500 sm:inline">
+              {email}
+            </span>
+          )}
+          <Link href="/settings">
+            <Button variant="ghost" size="sm" aria-label={t("settings.title")}>
+              <Settings size={16} />
+            </Button>
+          </Link>
           <Button
             variant="ghost"
             size="sm"
@@ -55,7 +57,6 @@ export function Header() {
           <form action={signOut}>
             <Button type="submit" variant="ghost" size="sm" aria-label={t("auth.signOut")}>
               <LogOut size={16} />
-              <span className="hidden sm:inline">{t("auth.signOut")}</span>
             </Button>
           </form>
         </div>
