@@ -9,7 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@soniox/speech-to-text-web": "^1.4.0",
+    "@soniox/client": "^1.0.2",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.103.0",
     "clsx": "^2.1.1",

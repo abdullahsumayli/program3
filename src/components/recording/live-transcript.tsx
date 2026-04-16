@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import type { Token } from "@soniox/speech-to-text-web";
+import type { RealtimeToken as Token } from "@soniox/client";
 
 export function LiveTranscript({
   finalTokens,

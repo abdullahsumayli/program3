@@ -1,7 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { SonioxClient, Token } from "@soniox/speech-to-text-web";
+import type {
+  AudioSource,
+  AudioSourceHandlers,
+  RealtimeToken,
+  Recording,
+} from "@soniox/client";
 
 type RecordingState = "idle" | "starting" | "recording" | "stopping" | "error";
 export type RecordingMode = "remote-share" | "mic-only";
@@ -30,11 +35,7 @@ export type RecordingDiagnosticsEvent =
     };
 
 const SONIOX_MODEL = "stt-rt-v4";
-const SONIOX_KEEPALIVE_INTERVAL_MS = 5000;
-const MAX_SONIOX_RETRIES = 3;
-const SONIOX_RETRY_DELAY_MS = 1000;
 const STARTING_TIMEOUT_MS = 20000;
-const SONIOX_CONNECT_TIMEOUT_MS = 12000;
 
 export type SpeakerSegment = {
   speaker_id: number;
@@ -43,34 +44,79 @@ export type SpeakerSegment = {
   end_ms: number;
 };
 
+class MediaStreamAudioSource implements AudioSource {
+  private recorder: MediaRecorder | null = null;
+  private stream: MediaStream;
+  private handlers: AudioSourceHandlers | null = null;
+
+  constructor(stream: MediaStream) {
+    this.stream = stream;
+  }
+
+  async start(handlers: AudioSourceHandlers) {
+    this.handlers = handlers;
+    const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+      ? "audio/webm;codecs=opus"
+      : "audio/webm";
+    this.recorder = new MediaRecorder(this.stream, { mimeType, audioBitsPerSecond: 64000 });
+    this.recorder.ondataavailable = async (e) => {
+      if (e.data.size > 0) {
+        const buf = await e.data.arrayBuffer();
+        handlers.onData(buf);
+      }
+    };
+    this.recorder.onerror = () => {
+      handlers.onError(new Error("MediaRecorder error"));
+    };
+    this.recorder.start(60);
+  }
+
+  stop() {
+    if (this.recorder && this.recorder.state !== "inactive") {
+      this.recorder.stop();
+    }
+    this.recorder = null;
+    this.handlers = null;
+  }
+
+  pause() {
+    if (this.recorder && this.recorder.state === "recording") {
+      this.recorder.pause();
+    }
+  }
+
+  resume() {
+    if (this.recorder && this.recorder.state === "paused") {
+      this.recorder.resume();
+    }
+  }
+}
+
 export function useRecordingModes(options?: {
   onDiagnosticsEvent?: (event: RecordingDiagnosticsEvent) => void;
 }) {
   const [state, setState] = useState<RecordingState>("idle");
-  const [finalTokens, setFinalTokens] = useState<Token[]>([]);
-  const [nonFinalTokens, setNonFinalTokens] = useState<Token[]>([]);
+  const [finalTokens, setFinalTokens] = useState<RealtimeToken[]>([]);
+  const [nonFinalTokens, setNonFinalTokens] = useState<RealtimeToken[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [systemAudioActive, setSystemAudioActive] = useState(false);
 
-  const clientRef = useRef<SonioxClient | null>(null);
+  const recordingRef = useRef<Recording | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const saveRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startTimeRef = useRef<number>(0);
   const systemStreamRef = useRef<MediaStream | null>(null);
   const combinedStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const finalTokensRef = useRef<Token[]>([]);
-  const nonFinalTokensRef = useRef<Token[]>([]);
-  const finishCallbackRef = useRef<(() => void) | null>(null);
+  const finalTokensRef = useRef<RealtimeToken[]>([]);
+  const nonFinalTokensRef = useRef<RealtimeToken[]>([]);
   const isStoppingRef = useRef(false);
   const hasStartedSessionRef = useRef(false);
-  const reconnectAttemptsRef = useRef(0);
   const systemAudioActiveRef = useRef(false);
   const startAttemptRef = useRef(0);
 
@@ -79,18 +125,14 @@ export function useRecordingModes(options?: {
       clearTimeout(startingTimeoutRef.current);
       startingTimeoutRef.current = null;
     }
-    if (retryTimerRef.current) {
-      clearTimeout(retryTimerRef.current);
-      retryTimerRef.current = null;
-    }
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
-    clientRef.current?.cancel();
-    clientRef.current = null;
-    mediaRecorderRef.current?.stop?.();
-    mediaRecorderRef.current = null;
+    recordingRef.current?.cancel();
+    recordingRef.current = null;
+    saveRecorderRef.current?.stop?.();
+    saveRecorderRef.current = null;
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     systemStreamRef.current?.getTracks().forEach((t) => t.stop());
@@ -116,22 +158,13 @@ export function useRecordingModes(options?: {
     audioChunksRef.current = [];
     finalTokensRef.current = [];
     nonFinalTokensRef.current = [];
-    finishCallbackRef.current = null;
     isStoppingRef.current = false;
     hasStartedSessionRef.current = false;
-    reconnectAttemptsRef.current = 0;
-    if (retryTimerRef.current) {
-      clearTimeout(retryTimerRef.current);
-      retryTimerRef.current = null;
-    }
-    if (startingTimeoutRef.current) {
-      clearTimeout(startingTimeoutRef.current);
-    }
+
+    if (startingTimeoutRef.current) clearTimeout(startingTimeoutRef.current);
     startingTimeoutRef.current = setTimeout(() => {
       if (attemptId === startAttemptRef.current && !hasStartedSessionRef.current && !isStoppingRef.current) {
-        setError(
-          "Recording did not start. Approve the microphone or screen-share prompt, or cancel and try microphone only."
-        );
+        setError("Recording did not start. Approve the microphone or screen-share prompt, or cancel and try microphone only.");
         setState("error");
         cleanupActiveResources();
       }
@@ -141,31 +174,18 @@ export function useRecordingModes(options?: {
       const micStream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true },
       });
-      if (attemptId !== startAttemptRef.current) {
-        micStream.getTracks().forEach((t) => t.stop());
-        return;
-      }
+      if (attemptId !== startAttemptRef.current) { micStream.getTracks().forEach((t) => t.stop()); return; }
       streamRef.current = micStream;
 
       let systemStream: MediaStream | null = null;
       if (mode === "remote-share") {
         try {
-          systemStream = await navigator.mediaDevices.getDisplayMedia({
-            audio: true,
-            video: true,
-          });
+          systemStream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true });
           systemStream.getVideoTracks().forEach((t) => t.stop());
-          if (systemStream.getAudioTracks().length === 0) {
-            systemStream = null;
-          }
-        } catch {
-          systemStream = null;
-        }
+          if (systemStream.getAudioTracks().length === 0) systemStream = null;
+        } catch { systemStream = null; }
       }
-      if (attemptId !== startAttemptRef.current) {
-        systemStream?.getTracks().forEach((t) => t.stop());
-        return;
-      }
+      if (attemptId !== startAttemptRef.current) { systemStream?.getTracks().forEach((t) => t.stop()); return; }
       systemStreamRef.current = systemStream;
 
       let combinedStream: MediaStream;
@@ -182,10 +202,7 @@ export function useRecordingModes(options?: {
           track.onended = () => {
             setSystemAudioActive(false);
             systemAudioActiveRef.current = false;
-            options?.onDiagnosticsEvent?.({
-              type: "system_audio_changed",
-              active: false,
-            });
+            options?.onDiagnosticsEvent?.({ type: "system_audio_changed", active: false });
           };
         });
       } else {
@@ -195,178 +212,87 @@ export function useRecordingModes(options?: {
       }
       combinedStreamRef.current = combinedStream;
 
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-        ? "audio/webm;codecs=opus"
-        : "audio/webm";
-      const mediaRecorder = new MediaRecorder(combinedStream, { mimeType });
-      mediaRecorderRef.current = mediaRecorder;
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunksRef.current.push(e.data);
-      };
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(audioChunksRef.current, { type: mimeType });
-        setAudioBlob(blob);
-      };
-      mediaRecorder.start(1000);
+      const saveMime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "audio/webm";
+      const saveRecorder = new MediaRecorder(combinedStream, { mimeType: saveMime });
+      saveRecorderRef.current = saveRecorder;
+      saveRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
+      saveRecorder.onstop = () => { setAudioBlob(new Blob(audioChunksRef.current, { type: saveMime })); };
+      saveRecorder.start(1000);
 
-      const startSonioxSession = async () => {
-        const sourceStream = combinedStreamRef.current;
-        if (!sourceStream || sourceStream.getAudioTracks().length === 0) {
-          throw new Error("Recording audio stream is unavailable");
-        }
+      const sonioxStream = combinedStream.clone();
+      const { SonioxClient } = await import("@soniox/client");
+
+      const client = new SonioxClient({
+        api_key: async () => {
+          console.info("[Soniox] Requesting temp key…");
+          let res: Response;
+          try {
+            res = await fetch("/api/soniox-temp-key", { method: "POST" });
+          } catch (err) {
+            throw new Error(`Network error contacting /api/soniox-temp-key: ${err instanceof Error ? err.message : String(err)}`);
+          }
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data.api_key) {
+            console.error("[Soniox] Temp key failed:", res.status, data);
+            throw new Error(data.message || data.error || `Failed to get temp key (HTTP ${res.status})`);
+          }
+          console.info("[Soniox] Temp key received, connecting…");
+          return data.api_key;
+        },
+      });
+
+      const customSource = new MediaStreamAudioSource(sonioxStream);
+      const recording = client.realtime.record({
+        model: SONIOX_MODEL,
+        language_hints: ["ar", "en"],
+        enable_speaker_diarization: true,
+        enable_endpoint_detection: true,
+        source: customSource,
+      });
+      recordingRef.current = recording;
+
+      recording.on("connected", () => {
         if (attemptId !== startAttemptRef.current) return;
+        console.info("[Soniox] Session started, transcription active.");
+        setError(null);
+        setState("recording");
+        if (startingTimeoutRef.current) { clearTimeout(startingTimeoutRef.current); startingTimeoutRef.current = null; }
+        options?.onDiagnosticsEvent?.({ type: "session_started", systemAudioActive: systemAudioActiveRef.current });
+        if (!hasStartedSessionRef.current) {
+          hasStartedSessionRef.current = true;
+          startTimeRef.current = Date.now();
+          timerRef.current = setInterval(() => {
+            setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
+          }, 500);
+        }
+      });
 
-        const { SonioxClient } = await import("@soniox/speech-to-text-web");
-        const sonioxStream = sourceStream.clone();
-        const client = new SonioxClient({
-          apiKey: async () => {
-            let res: Response;
-            try {
-              console.info("[Soniox] Requesting temp key…");
-              res = await fetch("/api/soniox-temp-key", { method: "POST" });
-            } catch (err) {
-              throw new Error(
-                `Network error contacting /api/soniox-temp-key: ${
-                  err instanceof Error ? err.message : String(err)
-                }`
-              );
-            }
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok || !data.api_key) {
-              console.error("[Soniox] Temp key failed:", res.status, data);
-              throw new Error(
-                data.message ||
-                  data.error ||
-                  `Failed to get temp key (HTTP ${res.status})`
-              );
-            }
-            console.info("[Soniox] Temp key received, connecting…");
-            return data.api_key;
-          },
-          keepAlive: true,
-          keepAliveInterval: SONIOX_KEEPALIVE_INTERVAL_MS,
-          onStarted: () => {
-            if (attemptId !== startAttemptRef.current) return;
-            console.info("[Soniox] Session started, transcription active.");
-            reconnectAttemptsRef.current = 0;
-            setError(null);
-            setState("recording");
-            if (startingTimeoutRef.current) {
-              clearTimeout(startingTimeoutRef.current);
-              startingTimeoutRef.current = null;
-            }
-            options?.onDiagnosticsEvent?.({
-              type: "session_started",
-              systemAudioActive: systemAudioActiveRef.current,
-            });
-            if (!hasStartedSessionRef.current) {
-              hasStartedSessionRef.current = true;
-              startTimeRef.current = Date.now();
-              timerRef.current = setInterval(() => {
-                setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
-              }, 500);
-            }
-          },
-          onPartialResult: (result) => {
-            if (attemptId !== startAttemptRef.current) return;
-            const tokens = result.tokens ?? [];
-            const newFinal = tokens.filter((t) => t.is_final);
-            const newNonFinal = tokens.filter((t) => !t.is_final);
+      recording.on("result", (result) => {
+        if (attemptId !== startAttemptRef.current) return;
+        const tokens = result.tokens ?? [];
+        const newFinal = tokens.filter((t) => t.is_final);
+        const newNonFinal = tokens.filter((t) => !t.is_final);
+        if (newFinal.length > 0) {
+          finalTokensRef.current = [...finalTokensRef.current, ...newFinal];
+          setFinalTokens((prev) => [...prev, ...newFinal]);
+        }
+        nonFinalTokensRef.current = newNonFinal;
+        setNonFinalTokens(newNonFinal);
+      });
 
-            if (newFinal.length > 0) {
-              finalTokensRef.current = [...finalTokensRef.current, ...newFinal];
-            }
-            nonFinalTokensRef.current = newNonFinal;
-
-            if (newFinal.length > 0) {
-              setFinalTokens((prev) => [...prev, ...newFinal]);
-            }
-            setNonFinalTokens(newNonFinal);
-          },
-          onFinished: () => {
-            clientRef.current = null;
-            if (isStoppingRef.current) {
-              if (timerRef.current) {
-                clearInterval(timerRef.current);
-                timerRef.current = null;
-              }
-              finishCallbackRef.current?.();
-            }
-          },
-          onError: (status, message) => {
-            if (attemptId !== startAttemptRef.current) return;
-            clientRef.current = null;
-            if (startingTimeoutRef.current) {
-              clearTimeout(startingTimeoutRef.current);
-              startingTimeoutRef.current = null;
-            }
-
-            const canRetry =
-              !isStoppingRef.current &&
-              combinedStreamRef.current?.getAudioTracks().some((track) => track.readyState === "live") &&
-              reconnectAttemptsRef.current < MAX_SONIOX_RETRIES &&
-              (status === "websocket_error" ||
-                status === "media_recorder_error" ||
-                status === "api_error" ||
-                status === "queue_limit_exceeded");
-
-            if (canRetry) {
-              reconnectAttemptsRef.current += 1;
-              options?.onDiagnosticsEvent?.({
-                type: "session_reconnecting",
-                attempt: reconnectAttemptsRef.current,
-                status,
-                message,
-              });
-              retryTimerRef.current = setTimeout(() => {
-                retryTimerRef.current = null;
-                void startSonioxSession().catch((retryErr) => {
-                  if (attemptId !== startAttemptRef.current) return;
-                  setError(
-                    retryErr instanceof Error ? retryErr.message : "Failed to restart transcription"
-                  );
-                  setState("error");
-                  finishCallbackRef.current?.();
-                });
-              }, SONIOX_RETRY_DELAY_MS);
-              return;
-            }
-
-            options?.onDiagnosticsEvent?.({
-              type: "session_error",
-              status,
-              message,
-              reconnectCount: reconnectAttemptsRef.current,
-            });
-            setError(message);
-            setState("error");
-            finishCallbackRef.current?.();
-          },
+      recording.on("error", (err) => {
+        if (attemptId !== startAttemptRef.current) return;
+        console.error("[Soniox] Recording error:", err);
+        options?.onDiagnosticsEvent?.({
+          type: "session_error",
+          status: "websocket_error",
+          message: err.message,
+          reconnectCount: 0,
         });
+        setError(err.message);
+        setState("error");
+      });
 
-        clientRef.current = client;
-
-        await Promise.race([
-          client.start({
-            model: SONIOX_MODEL,
-            languageHints: ["ar", "en"],
-            enableSpeakerDiarization: true,
-            enableEndpointDetection: true,
-            stream: sonioxStream,
-          }),
-          new Promise<never>((_, reject) => {
-            setTimeout(() => {
-              reject(
-                new Error(
-                  "Transcription service did not connect in time. Cancel and try microphone only, or check the Soniox connection."
-                )
-              );
-            }, SONIOX_CONNECT_TIMEOUT_MS);
-          }),
-        ]);
-      };
-
-      await startSonioxSession();
     } catch (err) {
       if (attemptId !== startAttemptRef.current) return;
       setError(err instanceof Error ? err.message : "Failed to start");
@@ -379,7 +305,6 @@ export function useRecordingModes(options?: {
     startAttemptRef.current += 1;
     isStoppingRef.current = false;
     hasStartedSessionRef.current = false;
-    reconnectAttemptsRef.current = 0;
     setError(null);
     setNonFinalTokens([]);
     cleanupActiveResources();
@@ -395,19 +320,12 @@ export function useRecordingModes(options?: {
     return new Promise((resolve) => {
       isStoppingRef.current = true;
       setState("stopping");
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-      if (retryTimerRef.current) {
-        clearTimeout(retryTimerRef.current);
-        retryTimerRef.current = null;
-      }
+      if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
       const finalDuration = Math.floor((Date.now() - startTimeRef.current) / 1000);
 
       const finish = () => {
         const allTokens = [...finalTokensRef.current, ...nonFinalTokensRef.current];
-        const transcript = allTokens.map((t) => t.text.replace(/<end>/gi, "")).join("");
+        const transcript = allTokens.map((t) => t.text).join("");
         const segments = buildSegments(allTokens);
         streamRef.current?.getTracks().forEach((t) => t.stop());
         systemStreamRef.current?.getTracks().forEach((t) => t.stop());
@@ -416,50 +334,29 @@ export function useRecordingModes(options?: {
         systemAudioActiveRef.current = false;
 
         const finalizeAudio = () => {
-          const blob = audioChunksRef.current.length
-            ? new Blob(audioChunksRef.current, { type: "audio/webm" })
-            : null;
+          const blob = audioChunksRef.current.length ? new Blob(audioChunksRef.current, { type: "audio/webm" }) : null;
           resolve({ transcript, segments, duration: finalDuration, audioBlob: blob });
         };
 
-        const mr = mediaRecorderRef.current;
+        const mr = saveRecorderRef.current;
         if (mr && mr.state !== "inactive") {
           let settled = false;
           const prevOnStop = mr.onstop;
           mr.onstop = (ev) => {
-            if (typeof prevOnStop === "function") {
-              prevOnStop.call(mr, ev);
-            }
-            if (!settled) {
-              settled = true;
-              finalizeAudio();
-            }
+            if (typeof prevOnStop === "function") prevOnStop.call(mr, ev);
+            if (!settled) { settled = true; finalizeAudio(); }
           };
           mr.stop();
-          setTimeout(() => {
-            if (!settled) {
-              settled = true;
-              finalizeAudio();
-            }
-          }, 5000);
+          setTimeout(() => { if (!settled) { settled = true; finalizeAudio(); } }, 5000);
         } else {
           finalizeAudio();
         }
       };
 
-      if (clientRef.current) {
-        let finished = false;
-        const onDone = () => {
-          if (finished) return;
-          finished = true;
-          finishCallbackRef.current = null;
-          setTimeout(finish, 150);
-        };
-        finishCallbackRef.current = onDone;
-        clientRef.current.stop();
-        setTimeout(() => {
-          if (!finished) onDone();
-        }, 15000);
+      const rec = recordingRef.current;
+      if (rec) {
+        rec.stop().then(() => { setTimeout(finish, 150); }).catch(() => { finish(); });
+        setTimeout(() => { finish(); }, 15000);
       } else {
         finish();
       }
@@ -469,17 +366,13 @@ export function useRecordingModes(options?: {
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
-      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
       cleanupActiveResources();
     };
-  }, [cleanupActiveResources, options]);
+  }, [cleanupActiveResources]);
 
   useEffect(() => {
     if (state !== "recording") return;
-    const handler = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-      e.returnValue = "";
-    };
+    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
   }, [state]);
@@ -498,22 +391,16 @@ export function useRecordingModes(options?: {
   };
 }
 
-function buildSegments(tokens: Token[]): SpeakerSegment[] {
+function buildSegments(tokens: RealtimeToken[]): SpeakerSegment[] {
   const segments: SpeakerSegment[] = [];
   let current: SpeakerSegment | null = null;
-
   for (const token of tokens) {
-    const text = token.text.replace(/<end>/gi, "");
+    const text = token.text;
     if (!text) continue;
     const speakerId = parseInt(token.speaker ?? "1", 10) || 1;
     if (!current || current.speaker_id !== speakerId) {
       if (current) segments.push(current);
-      current = {
-        speaker_id: speakerId,
-        text,
-        start_ms: token.start_ms ?? 0,
-        end_ms: token.end_ms ?? 0,
-      };
+      current = { speaker_id: speakerId, text, start_ms: token.start_ms ?? 0, end_ms: token.end_ms ?? 0 };
     } else {
       current.text += text;
       current.end_ms = token.end_ms ?? current.end_ms;
