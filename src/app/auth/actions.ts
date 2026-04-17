@@ -9,7 +9,26 @@ import { getPublicAppUrlFromEnv } from "@/lib/app-url";
 async function appOrigin(): Promise<string> {
   const fromEnv = getPublicAppUrlFromEnv();
   if (fromEnv) return fromEnv;
-  return (await headers()).get("origin") ?? "";
+
+  const h = await headers();
+  const originHeader = h.get("origin");
+  if (originHeader) return originHeader;
+
+  const forwardedHost = h.get("x-forwarded-host")?.split(",")[0]?.trim();
+  const forwardedProto = h.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  if (forwardedHost) {
+    const proto =
+      forwardedProto === "http" || forwardedProto === "https" ? forwardedProto : "https";
+    return `${proto}://${forwardedHost}`;
+  }
+
+  const host = h.get("host");
+  if (host) {
+    const local = host.startsWith("localhost") || host.startsWith("127.0.0.1");
+    return `${local ? "http" : "https"}://${host}`;
+  }
+
+  return "";
 }
 
 export type AuthState = { error?: string; message?: string } | null;
@@ -74,6 +93,11 @@ export async function signInWithGoogle(formData: FormData) {
   const next = String(formData.get("next") ?? "/");
   const supabase = await createClient();
   const origin = await appOrigin();
+  if (!origin) {
+    redirect(
+      `/login?error=${encodeURIComponent("App URL is not configured. Set NEXT_PUBLIC_APP_URL on the server (e.g. in Vercel).")}`
+    );
+  }
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
