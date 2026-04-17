@@ -21,7 +21,17 @@ export async function POST(request: Request) {
   if (auth.error) return auth.error;
   const { user, supabase, workspace } = auth;
 
-  const body = await request.json();
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const allowedSources = ["live_recording", "uploaded_recording"];
+  const sourceType = allowedSources.includes(body.source_type as string)
+    ? (body.source_type as string)
+    : "live_recording";
 
   const { data, error } = await supabase
     .from("meetings")
@@ -31,18 +41,16 @@ export async function POST(request: Request) {
       title: body.title ?? null,
       transcript: body.transcript ?? "",
       transcript_segments: body.transcript_segments ?? null,
-      summary: body.summary ?? null,
-      key_points: body.key_points ?? null,
-      duration: body.duration ?? 0,
-      audio_url: body.audio_url ?? null,
-      source_type: body.source_type ?? "live_recording",
-      processing_status: body.processing_status ?? "completed",
-      processing_error: body.processing_error ?? null,
+      duration: typeof body.duration === "number" ? body.duration : 0,
+      audio_url: typeof body.audio_url === "string" ? body.audio_url : null,
+      source_type: sourceType,
+      processing_status: "processing",
+      processing_error: null,
     })
     .select()
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return NextResponse.json({ error: "Failed to create meeting" }, { status: 500 });
   return NextResponse.json(data);
 }
 

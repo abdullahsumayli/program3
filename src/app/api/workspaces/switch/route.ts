@@ -8,7 +8,13 @@ export async function POST(request: Request) {
   if (auth.error) return auth.error;
   const { user, supabase } = auth;
 
-  const { workspaceId } = await request.json();
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+  const workspaceId = body.workspaceId;
   if (typeof workspaceId !== "string" || !workspaceId) {
     return NextResponse.json({ error: "workspaceId required" }, { status: 400 });
   }

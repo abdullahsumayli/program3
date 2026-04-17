@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/supabase/auth";
+import { requireAdmin } from "@/lib/admin";
 
 type ServiceHealth = {
   configured: boolean;
@@ -8,7 +8,7 @@ type ServiceHealth = {
 };
 
 export async function GET() {
-  const auth = await requireUser();
+  const auth = await requireAdmin();
   if (auth.error) return auth.error;
 
   const [soniox, openrouter, supabaseStatus, moyasar, resend] =

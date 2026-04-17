@@ -15,6 +15,18 @@ function escape(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+function safeHref(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+      return "#";
+    }
+    return escape(url);
+  } catch {
+    return "#";
+  }
+}
+
 export function workspaceInviteEmail(params: {
   workspaceName: string;
   inviterName: string;
@@ -24,7 +36,7 @@ export function workspaceInviteEmail(params: {
   const html = wrap(
     subject,
     `<p>${escape(params.inviterName)} invited you to collaborate in <strong>${escape(params.workspaceName)}</strong>.</p>
-     <p style="margin:24px 0"><a href="${params.acceptUrl}" style="display:inline-block;background:#0f172a;color:#fff;padding:10px 18px;border-radius:10px;text-decoration:none">Accept invitation</a></p>
+     <p style="margin:24px 0"><a href="${safeHref(params.acceptUrl)}" style="display:inline-block;background:#0f172a;color:#fff;padding:10px 18px;border-radius:10px;text-decoration:none">Accept invitation</a></p>
      <p style="color:#64748b;font-size:13px">If you didn't expect this invitation you can ignore this email.</p>`
   );
   return { subject, html };
@@ -42,7 +54,7 @@ export function taskAssignedEmail(params: {
     `<p>A task from <strong>${escape(params.meetingTitle)}</strong> has been assigned to you:</p>
      <blockquote style="margin:16px 0;padding:12px 16px;background:#f1f5f9;border-radius:12px">${escape(params.taskDescription)}</blockquote>
      ${params.dueDate ? `<p>Due: <strong>${escape(params.dueDate)}</strong></p>` : ""}
-     <p style="margin:24px 0"><a href="${params.appUrl}" style="display:inline-block;background:#0f172a;color:#fff;padding:10px 18px;border-radius:10px;text-decoration:none">Open dashboard</a></p>`
+     <p style="margin:24px 0"><a href="${safeHref(params.appUrl)}" style="display:inline-block;background:#0f172a;color:#fff;padding:10px 18px;border-radius:10px;text-decoration:none">Open dashboard</a></p>`
   );
   return { subject, html };
 }
@@ -58,7 +70,7 @@ export function taskDueSoonEmail(params: {
     subject,
     `<p>Reminder — a task from <strong>${escape(params.meetingTitle)}</strong> is due on <strong>${escape(params.dueDate)}</strong>:</p>
      <blockquote style="margin:16px 0;padding:12px 16px;background:#fef3c7;border-radius:12px">${escape(params.taskDescription)}</blockquote>
-     <p style="margin:24px 0"><a href="${params.appUrl}" style="display:inline-block;background:#0f172a;color:#fff;padding:10px 18px;border-radius:10px;text-decoration:none">Open dashboard</a></p>`
+     <p style="margin:24px 0"><a href="${safeHref(params.appUrl)}" style="display:inline-block;background:#0f172a;color:#fff;padding:10px 18px;border-radius:10px;text-decoration:none">Open dashboard</a></p>`
   );
   return { subject, html };
 }
@@ -72,7 +84,7 @@ export function subscriptionFailedEmail(params: {
     subject,
     `<p>We couldn't process the latest payment for <strong>${escape(params.workspaceName)}</strong>.</p>
      <p>Please update your payment method to avoid service interruption.</p>
-     <p style="margin:24px 0"><a href="${params.appUrl}" style="display:inline-block;background:#0f172a;color:#fff;padding:10px 18px;border-radius:10px;text-decoration:none">Manage billing</a></p>`
+     <p style="margin:24px 0"><a href="${safeHref(params.appUrl)}" style="display:inline-block;background:#0f172a;color:#fff;padding:10px 18px;border-radius:10px;text-decoration:none">Manage billing</a></p>`
   );
   return { subject, html };
 }

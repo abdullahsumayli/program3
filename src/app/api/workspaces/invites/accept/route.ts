@@ -8,7 +8,13 @@ export async function POST(request: Request) {
   if (auth.error) return auth.error;
   const { supabase } = auth;
 
-  const { token } = await request.json();
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+  const token = body.token;
   if (typeof token !== "string" || !token) {
     return NextResponse.json({ error: "token required" }, { status: 400 });
   }

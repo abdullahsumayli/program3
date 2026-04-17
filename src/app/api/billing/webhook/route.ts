@@ -50,6 +50,15 @@ export async function POST(request: Request) {
 
   const supabase = createServiceClient();
 
+  const { data: wsExists } = await supabase
+    .from("workspaces")
+    .select("id")
+    .eq("id", workspaceId)
+    .maybeSingle();
+  if (!wsExists) {
+    return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+  }
+
   await supabase.from("subscription_events").insert({
     workspace_id: workspaceId,
     event_type: eventType,

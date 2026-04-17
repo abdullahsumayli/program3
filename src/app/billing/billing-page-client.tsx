@@ -89,8 +89,14 @@ export function BillingPageClient() {
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? "Checkout failed");
       if (body.redirectUrl) {
-        window.location.href = body.redirectUrl;
-        return;
+        try {
+          const url = new URL(body.redirectUrl);
+          if (url.hostname.endsWith("moyasar.com") || url.hostname.endsWith("moyasar.sa")) {
+            window.location.href = body.redirectUrl;
+            return;
+          }
+        } catch { /* invalid URL */ }
+        throw new Error("Invalid payment URL");
       }
       throw new Error("No payment URL returned");
     } catch (err) {

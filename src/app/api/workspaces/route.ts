@@ -27,8 +27,13 @@ export async function POST(request: Request) {
   if (auth.error) return auth.error;
   const { user, supabase } = auth;
 
-  const { name } = await request.json();
-  const trimmed = typeof name === "string" ? name.trim() : "";
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+  const trimmed = typeof body.name === "string" ? body.name.trim() : "";
   if (!trimmed) return NextResponse.json({ error: "name required" }, { status: 400 });
 
   const { data: workspace, error } = await supabase

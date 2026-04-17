@@ -34,7 +34,12 @@ export async function PUT(request: Request) {
   if (auth.error) return auth.error;
   const { user, supabase } = auth;
 
-  const body = await request.json();
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
 
   const updates: Record<string, unknown> = {
     user_id: user.id,

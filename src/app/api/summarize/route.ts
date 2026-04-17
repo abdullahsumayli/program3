@@ -7,7 +7,17 @@ export async function POST(request: Request) {
   if (auth.error) return auth.error;
   const { user, supabase, workspace } = auth;
 
-  const { meetingId, transcript, fallbackTitle } = await request.json();
+  let parsedBody: Record<string, unknown>;
+  try {
+    parsedBody = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+  const { meetingId, transcript, fallbackTitle } = parsedBody as {
+    meetingId?: string;
+    transcript?: string;
+    fallbackTitle?: string;
+  };
   if (!meetingId) {
     return NextResponse.json({ error: "meetingId is required" }, { status: 400 });
   }

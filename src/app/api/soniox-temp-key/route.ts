@@ -34,18 +34,19 @@ export async function POST() {
     });
 
     if (!res.ok) {
-      const text = await res.text();
+      console.error("[soniox-temp-key] Soniox error:", res.status, await res.text());
       return NextResponse.json(
-        { error: `Soniox error: ${text}` },
-        { status: res.status }
+        { error: "Transcription service unavailable" },
+        { status: 502 }
       );
     }
 
     const data = await res.json();
     return NextResponse.json({ api_key: data.api_key ?? data.temporary_api_key });
   } catch (err) {
+    console.error("[soniox-temp-key] error:", err);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Unknown error" },
+      { error: "Transcription service unavailable" },
       { status: 500 }
     );
   }

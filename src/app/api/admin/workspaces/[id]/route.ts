@@ -10,7 +10,12 @@ export async function PATCH(
   if (auth.error) return auth.error;
 
   const { id } = await params;
-  const body = await request.json();
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
   const { action } = body as { action: string };
   const db = createAdminClient();
 

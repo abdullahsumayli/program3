@@ -25,6 +25,8 @@ export function SystemStatus() {
         const res = await fetch("/api/health", { cache: "no-store" });
         if (res.ok && !cancelled) {
           setHealth(await res.json());
+        } else if (!cancelled) {
+          setHealth(null);
         }
       } catch {
         if (!cancelled) setHealth(null);

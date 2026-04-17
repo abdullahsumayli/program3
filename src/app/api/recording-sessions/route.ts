@@ -7,7 +7,12 @@ export async function POST(request: Request) {
   if (auth.error) return auth.error;
   const { user, supabase, workspace } = auth;
 
-  const body = await request.json();
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
 
   if (!body.recording_mode) {
     return NextResponse.json({ error: "recording_mode required" }, { status: 400 });

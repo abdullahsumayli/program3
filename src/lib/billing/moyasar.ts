@@ -82,12 +82,15 @@ export async function verifyWebhookSignature(
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 
-  return timingSafeEqual(expected, receivedSignature);
-}
+  const bufExpected = Buffer.from(expected, "utf-8");
+  const bufReceived = Buffer.from(receivedSignature, "utf-8");
 
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let out = 0;
-  for (let i = 0; i < a.length; i++) out |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return out === 0;
+  if (bufExpected.length !== bufReceived.length) {
+    const { timingSafeEqual: tse } = await import("crypto");
+    tse(bufExpected, bufExpected);
+    return false;
+  }
+
+  const { timingSafeEqual: tse } = await import("crypto");
+  return tse(bufExpected, bufReceived);
 }

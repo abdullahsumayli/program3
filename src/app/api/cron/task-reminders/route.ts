@@ -7,8 +7,8 @@ import { taskDueSoonEmail } from "@/lib/email/templates";
 // and emails an assignee (when the owner_name is an email address).
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
-  const expected = process.env.CRON_SECRET ? `Bearer ${process.env.CRON_SECRET}` : null;
-  if (expected && authHeader !== expected) {
+  const secret = process.env.CRON_SECRET;
+  if (!secret || authHeader !== `Bearer ${secret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

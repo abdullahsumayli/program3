@@ -19,7 +19,10 @@ export default async function AdminCustomersPage({
   const db = createAdminClient();
 
   const wsQuery = db.from("workspaces").select("*").order("created_at", { ascending: false });
-  if (q) wsQuery.ilike("name", `%${q}%`);
+  if (q) {
+    const escaped = q.replace(/%/g, "\\%").replace(/_/g, "\\_");
+    wsQuery.ilike("name", `%${escaped}%`);
+  }
   const { data: workspaces } = await wsQuery;
   const ws = (workspaces ?? []) as Workspace[];
 

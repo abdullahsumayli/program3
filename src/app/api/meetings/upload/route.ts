@@ -8,6 +8,11 @@ const SONIOX_BASE_URL = "https://api.soniox.com/v1";
 const SONIOX_MODEL = "stt-async-preview";
 const POLL_INTERVAL_MS = 2000;
 const POLL_TIMEOUT_MS = 10 * 60 * 1000;
+const MAX_FILE_SIZE = 500 * 1024 * 1024;
+const ALLOWED_TYPES = new Set([
+  "audio/webm", "audio/mp4", "audio/mpeg", "audio/ogg", "audio/wav",
+  "audio/x-wav", "audio/mp3", "audio/aac", "video/webm", "video/mp4",
+]);
 
 export async function POST(request: Request) {
   const auth = await requireWorkspace();
@@ -23,6 +28,15 @@ export async function POST(request: Request) {
 
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "audio file required" }, { status: 400 });
+  }
+
+  if (file.size > MAX_FILE_SIZE) {
+    return NextResponse.json({ error: "File too large. Maximum size is 500 MB." }, { status: 413 });
+  }
+
+  const mimeType = file.type || "application/octet-stream";
+  if (!ALLOWED_TYPES.has(mimeType)) {
+    return NextResponse.json({ error: "Invalid file type. Only audio and video files are accepted." }, { status: 415 });
   }
 
   const apiKey = process.env.SONIOX_API_KEY;
@@ -53,7 +67,8 @@ export async function POST(request: Request) {
   });
 
   if (!uploadToSoniox.ok) {
-    return NextResponse.json({ error: await uploadToSoniox.text() }, { status: uploadToSoniox.status });
+    console.error("[meetings/upload] Soniox file upload error:", await uploadToSoniox.text());
+    return NextResponse.json({ error: "Transcription service unavailable" }, { status: 502 });
   }
 
   const sonioxFile = await uploadToSoniox.json();
@@ -75,7 +90,8 @@ export async function POST(request: Request) {
   });
 
   if (!createTranscription.ok) {
-    return NextResponse.json({ error: await createTranscription.text() }, { status: createTranscription.status });
+    console.error("[meetings/upload] Soniox transcription error:", await createTranscription.text());
+    return NextResponse.json({ error: "Transcription service unavailable" }, { status: 502 });
   }
 
   const transcription = await createTranscription.json();
@@ -85,7 +101,8 @@ export async function POST(request: Request) {
   });
 
   if (!transcriptResponse.ok) {
-    return NextResponse.json({ error: await transcriptResponse.text() }, { status: transcriptResponse.status });
+    console.error("[meetings/upload] Soniox transcript fetch error:", await transcriptResponse.text());
+    return NextResponse.json({ error: "Transcription service unavailable" }, { status: 502 });
   }
 
   const transcriptPayload = await transcriptResponse.json();
@@ -124,6 +141,7 @@ export async function POST(request: Request) {
       fallbackTitle: title || null,
     });
   } catch (error) {
+    console.error("[meetings/upload] processing error:", error);
     await supabase
       .from("meetings")
       .update({
@@ -132,7 +150,7 @@ export async function POST(request: Request) {
       })
       .eq("id", meeting.id)
       .eq("workspace_id", workspace.id);
-    throw error;
+    return NextResponse.json({ error: "Meeting processing failed" }, { status: 500 });
   }
 
   return NextResponse.json({ id: meeting.id });

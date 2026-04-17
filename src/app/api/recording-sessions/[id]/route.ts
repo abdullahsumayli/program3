@@ -10,7 +10,12 @@ export async function PATCH(
 
   const { supabase, workspace } = auth;
   const { id } = await ctx.params;
-  const body = await request.json();
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
 
   const updates: Record<string, unknown> = {
     updated_at: new Date().toISOString(),

@@ -45,8 +45,14 @@ export async function PATCH(request: Request) {
   if (auth.error) return auth.error;
   const { supabase, workspace } = auth;
 
-  const { userId, role } = await request.json();
-  if (!userId || !["admin", "member"].includes(role)) {
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+  const { userId, role } = body as { userId?: string; role?: string };
+  if (!userId || !["admin", "member"].includes(role ?? "")) {
     return NextResponse.json({ error: "userId and role (admin|member) required" }, { status: 400 });
   }
   if (userId === workspace.owner_id) {

@@ -19,7 +19,10 @@ export async function GET(request: Request) {
     .limit(Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 500) : 100);
 
   if (status) query = query.eq("status", status);
-  if (email) query = query.ilike("user_email", `%${email}%`);
+  if (email) {
+    const escaped = email.replace(/%/g, "\\%").replace(/_/g, "\\_");
+    query = query.ilike("user_email", `%${escaped}%`);
+  }
 
   const { data, error } = await query;
   if (error) {

@@ -30,9 +30,14 @@ export async function POST(request: Request) {
   if (auth.error) return auth.error;
   const { supabase, workspace, user } = auth;
 
-  const { email, role } = await request.json();
-  const cleanEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
-  const cleanRole = ["admin", "member"].includes(role) ? role : "member";
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+  const cleanEmail = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+  const cleanRole = ["admin", "member"].includes(body.role as string) ? (body.role as string) : "member";
   if (!cleanEmail || !cleanEmail.includes("@")) {
     return NextResponse.json({ error: "valid email required" }, { status: 400 });
   }
@@ -83,7 +88,7 @@ export async function POST(request: Request) {
     console.error("[invite] email send failed", err);
   }
 
-  return NextResponse.json({ id: invite.id, acceptUrl });
+  return NextResponse.json({ id: invite.id });
 }
 
 export async function DELETE(request: Request) {
