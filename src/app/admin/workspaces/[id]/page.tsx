@@ -61,66 +61,66 @@ export default async function WorkspaceDetailPage({
   const totalMinutes = meetings.reduce((s, m) => s + Math.round((m.duration ?? 0) / 60), 0);
   const tasksCompleted = tasks.filter((t) => t.status === "completed").length;
 
+  const statusLabel = (s: string) =>
+    s === "active" ? "نشط" : s === "past_due" ? "متأخر" : "موقوف";
+
+  const processingLabel = (s: string) =>
+    s === "completed" ? "مكتمل" : s === "error" ? "خطأ" : "قيد المعالجة";
+
+  const sessionStatusLabel = (s: string) =>
+    s === "completed" ? "مكتمل" : s === "recording" ? "يسجل" : s === "error" ? "خطأ" : "متوقف";
+
   return (
     <>
-      {/* Breadcrumb */}
+      {/* مسار التنقل */}
       <div className="mb-6 flex items-center gap-2 text-sm text-gray-500">
-        <Link href="/admin" className="hover:text-gray-900">Customers</Link>
-        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <Link href="/admin" className="hover:text-gray-900">العملاء</Link>
+        <svg className="h-3 w-3 rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
         </svg>
         <span className="text-gray-900">{ws.name}</span>
       </div>
 
-      {/* Header */}
+      {/* العنوان */}
       <div className="mb-8">
         <h1 className="text-2xl font-semibold text-gray-900">{ws.name}</h1>
         <p className="mt-1 font-mono text-xs text-gray-400">{ws.id}</p>
       </div>
 
       <div className="space-y-8">
-        {/* General Info */}
-        <Card title="General Information">
+        {/* معلومات عامة */}
+        <Card title="المعلومات العامة">
           <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
-            <InfoField label="Owner" value={emailMap.get(ws.owner_id) ?? "—"} />
-            <InfoField label="Plan" value={ws.plan === "paid" ? "Paid" : "Free"} />
+            <InfoField label="المالك" value={emailMap.get(ws.owner_id) ?? "—"} />
+            <InfoField label="الباقة" value={ws.plan === "paid" ? "مدفوعة" : "مجانية"} />
+            <InfoField label="الحالة" value={statusLabel(ws.subscription_status)} />
+            <InfoField label="تاريخ الإنشاء" value={new Date(ws.created_at).toLocaleDateString("ar-SA")} />
             <InfoField
-              label="Status"
-              value={
-                ws.subscription_status === "active"
-                  ? "Active"
-                  : ws.subscription_status === "past_due"
-                    ? "Past Due"
-                    : "Canceled"
-              }
+              label="تجديد الاشتراك"
+              value={ws.subscription_renews_at ? new Date(ws.subscription_renews_at).toLocaleDateString("ar-SA") : "—"}
             />
-            <InfoField label="Created" value={new Date(ws.created_at).toLocaleDateString()} />
-            <InfoField
-              label="Subscription Renews"
-              value={ws.subscription_renews_at ? new Date(ws.subscription_renews_at).toLocaleDateString() : "—"}
-            />
-            <InfoField label="Members" value={String(members.length)} />
-            <InfoField label="Meetings" value={String(meetings.length)} />
-            <InfoField label="Tasks" value={`${tasksCompleted}/${tasks.length} completed`} />
+            <InfoField label="الأعضاء" value={String(members.length)} />
+            <InfoField label="الاجتماعات" value={String(meetings.length)} />
+            <InfoField label="المهام" value={`${tasksCompleted}/${tasks.length} مكتملة`} />
           </div>
         </Card>
 
-        {/* Usage */}
-        <Card title="Usage">
+        {/* الاستهلاك */}
+        <Card title="الاستهلاك">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <UsageStat label="Total Meetings" value={meetings.length} />
-            <UsageStat label="Total Minutes" value={totalMinutes} />
-            <UsageStat label="Total Tasks" value={tasks.length} />
+            <UsageStat label="إجمالي الاجتماعات" value={meetings.length} />
+            <UsageStat label="إجمالي الدقائق" value={totalMinutes} />
+            <UsageStat label="إجمالي المهام" value={tasks.length} />
             <UsageStat
-              label="Used This Period"
+              label="المستخدم هذه الفترة"
               value={usage ? Math.round(usage.seconds_used / 60) : 0}
-              suffix="min"
+              suffix="دقيقة"
             />
           </div>
         </Card>
 
-        {/* Admin Actions (client component) */}
-        <Card title="Admin Controls">
+        {/* تحكم الأدمن */}
+        <Card title="تحكم الأدمن">
           <WorkspaceActions
             workspaceId={ws.id}
             currentPlan={ws.plan}
@@ -129,35 +129,35 @@ export default async function WorkspaceDetailPage({
           />
         </Card>
 
-        {/* Recent Meetings */}
-        <Card title="Recent Meetings">
+        {/* آخر الاجتماعات */}
+        <Card title="آخر الاجتماعات">
           {meetings.length === 0 ? (
-            <p className="py-4 text-sm text-gray-500">No meetings yet.</p>
+            <p className="py-4 text-sm text-gray-500">لا توجد اجتماعات بعد.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead>
-                  <tr className="border-b border-gray-200 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                    <th className="pb-2 pr-4">Title</th>
-                    <th className="pb-2 pr-4">Duration</th>
-                    <th className="pb-2 pr-4">Source</th>
-                    <th className="pb-2 pr-4">Status</th>
-                    <th className="pb-2">Date</th>
+                  <tr className="border-b border-gray-200 text-right text-xs font-medium tracking-wider text-gray-500">
+                    <th className="pb-2 pl-4">العنوان</th>
+                    <th className="pb-2 pl-4">المدة</th>
+                    <th className="pb-2 pl-4">المصدر</th>
+                    <th className="pb-2 pl-4">الحالة</th>
+                    <th className="pb-2">التاريخ</th>
                   </tr>
                 </thead>
                 <tbody>
                   {meetings.slice(0, 15).map((m) => (
                     <tr key={m.id} className="border-b border-gray-100">
-                      <td className="py-2.5 pr-4 font-medium text-gray-900">
-                        {m.title || "Untitled"}
+                      <td className="py-2.5 pl-4 font-medium text-gray-900">
+                        {m.title || "بدون عنوان"}
                       </td>
-                      <td className="py-2.5 pr-4 text-gray-600">
-                        {Math.round((m.duration ?? 0) / 60)} min
+                      <td className="py-2.5 pl-4 text-gray-600">
+                        {Math.round((m.duration ?? 0) / 60)} دقيقة
                       </td>
-                      <td className="py-2.5 pr-4 text-gray-600">
-                        {m.source_type === "live_recording" ? "Live" : "Upload"}
+                      <td className="py-2.5 pl-4 text-gray-600">
+                        {m.source_type === "live_recording" ? "مباشر" : "رفع ملف"}
                       </td>
-                      <td className="py-2.5 pr-4">
+                      <td className="py-2.5 pl-4">
                         <span
                           className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${
                             m.processing_status === "completed"
@@ -167,11 +167,11 @@ export default async function WorkspaceDetailPage({
                                 : "border-amber-200 bg-amber-50 text-amber-700"
                           }`}
                         >
-                          {m.processing_status}
+                          {processingLabel(m.processing_status)}
                         </span>
                       </td>
                       <td className="py-2.5 text-gray-500">
-                        {new Date(m.created_at).toLocaleDateString()}
+                        {new Date(m.created_at).toLocaleDateString("ar-SA")}
                       </td>
                     </tr>
                   ))}
@@ -181,27 +181,27 @@ export default async function WorkspaceDetailPage({
           )}
         </Card>
 
-        {/* Activity Log */}
-        <Card title="Recent Recording Sessions">
+        {/* سجل التسجيلات */}
+        <Card title="سجل جلسات التسجيل">
           {sessions.length === 0 ? (
-            <p className="py-4 text-sm text-gray-500">No recording sessions.</p>
+            <p className="py-4 text-sm text-gray-500">لا توجد جلسات تسجيل.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead>
-                  <tr className="border-b border-gray-200 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                    <th className="pb-2 pr-4">User</th>
-                    <th className="pb-2 pr-4">Status</th>
-                    <th className="pb-2 pr-4">Mode</th>
-                    <th className="pb-2 pr-4">Duration</th>
-                    <th className="pb-2">Started</th>
+                  <tr className="border-b border-gray-200 text-right text-xs font-medium tracking-wider text-gray-500">
+                    <th className="pb-2 pl-4">المستخدم</th>
+                    <th className="pb-2 pl-4">الحالة</th>
+                    <th className="pb-2 pl-4">الوضع</th>
+                    <th className="pb-2 pl-4">المدة</th>
+                    <th className="pb-2">البداية</th>
                   </tr>
                 </thead>
                 <tbody>
                   {sessions.map((s) => (
                     <tr key={s.id} className="border-b border-gray-100">
-                      <td className="py-2.5 pr-4 text-gray-900">{s.user_email ?? "—"}</td>
-                      <td className="py-2.5 pr-4">
+                      <td className="py-2.5 pl-4 text-gray-900">{s.user_email ?? "—"}</td>
+                      <td className="py-2.5 pl-4">
                         <span
                           className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${
                             s.status === "completed"
@@ -213,15 +213,17 @@ export default async function WorkspaceDetailPage({
                                   : "border-amber-200 bg-amber-50 text-amber-700"
                           }`}
                         >
-                          {s.status}
+                          {sessionStatusLabel(s.status)}
                         </span>
                       </td>
-                      <td className="py-2.5 pr-4 text-gray-600">{s.recording_mode}</td>
-                      <td className="py-2.5 pr-4 text-gray-600">
-                        {Math.round(s.duration_seconds / 60)} min
+                      <td className="py-2.5 pl-4 text-gray-600">
+                        {s.recording_mode === "mic-only" ? "ميكروفون" : "مشاركة شاشة"}
+                      </td>
+                      <td className="py-2.5 pl-4 text-gray-600">
+                        {Math.round(s.duration_seconds / 60)} دقيقة
                       </td>
                       <td className="py-2.5 text-gray-500">
-                        {new Date(s.started_at).toLocaleString()}
+                        {new Date(s.started_at).toLocaleString("ar-SA")}
                       </td>
                     </tr>
                   ))}
@@ -249,7 +251,7 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 function InfoField({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-xs font-medium uppercase tracking-wider text-gray-500">{label}</dt>
+      <dt className="text-xs font-medium tracking-wider text-gray-500">{label}</dt>
       <dd className="mt-1 text-sm text-gray-900">{value}</dd>
     </div>
   );
@@ -266,10 +268,10 @@ function UsageStat({
 }) {
   return (
     <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-      <div className="text-xs font-medium uppercase tracking-wider text-gray-500">{label}</div>
+      <div className="text-xs font-medium tracking-wider text-gray-500">{label}</div>
       <div className="mt-1 text-xl font-semibold text-gray-900">
         {value}
-        {suffix && <span className="ml-1 text-sm font-normal text-gray-500">{suffix}</span>}
+        {suffix && <span className="mr-1 text-sm font-normal text-gray-500">{suffix}</span>}
       </div>
     </div>
   );

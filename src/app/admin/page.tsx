@@ -66,28 +66,28 @@ export default async function AdminCustomersPage({
   return (
     <>
       <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-gray-900">Customers</h1>
+        <h1 className="text-2xl font-semibold text-gray-900">العملاء</h1>
         <p className="mt-1 text-sm text-gray-500">
-          Manage all workspaces, subscriptions, and usage.
+          إدارة جميع الشركات والاشتراكات والاستهلاك.
         </p>
       </div>
 
-      {/* Stats */}
+      {/* الإحصائيات */}
       <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Total Workspaces" value={rows.length} />
-        <StatCard label="Active" value={activeCount} tone="green" />
-        <StatCard label="Total Users" value={totalUsers} />
+        <StatCard label="إجمالي الشركات" value={rows.length} />
+        <StatCard label="نشط" value={activeCount} tone="green" />
+        <StatCard label="إجمالي المستخدمين" value={totalUsers} />
         <StatCard
-          label="Total Meetings"
+          label="إجمالي الاجتماعات"
           value={rows.reduce((s, r) => s + r.meeting_count, 0)}
         />
       </div>
 
-      {/* Search */}
+      {/* البحث */}
       <form action="/admin" method="GET" className="mb-6">
         <div className="relative max-w-md">
           <svg
-            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
+            className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -99,24 +99,24 @@ export default async function AdminCustomersPage({
             name="q"
             type="text"
             defaultValue={q ?? ""}
-            placeholder="Search by company name..."
-            className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-10 pr-4 text-sm text-gray-900 placeholder-gray-400 focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500"
+            placeholder="ابحث باسم الشركة..."
+            className="w-full rounded-lg border border-gray-300 bg-white py-2 pr-10 pl-4 text-sm text-gray-900 placeholder-gray-400 focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500"
           />
         </div>
       </form>
 
-      {/* Table */}
+      {/* الجدول */}
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-200 bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                <th className="px-5 py-3">Company</th>
-                <th className="px-5 py-3">Users</th>
-                <th className="px-5 py-3">Plan</th>
-                <th className="px-5 py-3">Status</th>
-                <th className="px-5 py-3">Registered</th>
-                <th className="px-5 py-3">Last Activity</th>
+              <tr className="border-b border-gray-200 bg-gray-50 text-right text-xs font-medium tracking-wider text-gray-500">
+                <th className="px-5 py-3">الشركة</th>
+                <th className="px-5 py-3">المستخدمين</th>
+                <th className="px-5 py-3">الباقة</th>
+                <th className="px-5 py-3">الحالة</th>
+                <th className="px-5 py-3">تاريخ التسجيل</th>
+                <th className="px-5 py-3">آخر نشاط</th>
                 <th className="px-5 py-3"></th>
               </tr>
             </thead>
@@ -124,7 +124,7 @@ export default async function AdminCustomersPage({
               {rows.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-5 py-12 text-center text-gray-500">
-                    {q ? "No workspaces match your search." : "No workspaces found."}
+                    {q ? "لا توجد نتائج مطابقة للبحث." : "لا توجد شركات."}
                   </td>
                 </tr>
               ) : (
@@ -142,20 +142,20 @@ export default async function AdminCustomersPage({
                       <StatusBadge status={r.subscription_status} />
                     </td>
                     <td className="px-5 py-4 text-gray-500">
-                      {new Date(r.created_at).toLocaleDateString()}
+                      {new Date(r.created_at).toLocaleDateString("ar-SA")}
                     </td>
                     <td className="px-5 py-4 text-gray-500">
                       {r.last_activity
-                        ? new Date(r.last_activity).toLocaleDateString()
+                        ? new Date(r.last_activity).toLocaleDateString("ar-SA")
                         : "—"}
                     </td>
-                    <td className="px-5 py-4 text-right">
+                    <td className="px-5 py-4 text-left">
                       <Link
                         href={`/admin/workspaces/${r.id}`}
                         className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100"
                       >
-                        Details
-                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        التفاصيل
+                        <svg className="h-3 w-3 rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                         </svg>
                       </Link>
@@ -182,7 +182,7 @@ function StatCard({
 }) {
   return (
     <div className="rounded-xl border border-gray-200 bg-white px-5 py-4 shadow-sm">
-      <div className="text-xs font-medium uppercase tracking-wider text-gray-500">{label}</div>
+      <div className="text-xs font-medium tracking-wider text-gray-500">{label}</div>
       <div className={`mt-2 text-2xl font-semibold ${tone === "green" ? "text-green-600" : "text-gray-900"}`}>
         {value}
       </div>
@@ -195,9 +195,10 @@ function PlanBadge({ plan }: { plan: string }) {
     plan === "paid"
       ? "border-blue-200 bg-blue-50 text-blue-700"
       : "border-gray-200 bg-gray-50 text-gray-600";
+  const label = plan === "paid" ? "مدفوعة" : "مجانية";
   return (
-    <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium capitalize ${cls}`}>
-      {plan}
+    <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${cls}`}>
+      {label}
     </span>
   );
 }
@@ -210,7 +211,7 @@ function StatusBadge({ status }: { status: string }) {
         ? "border-amber-200 bg-amber-50 text-amber-700"
         : "border-red-200 bg-red-50 text-red-700";
   const label =
-    status === "active" ? "Active" : status === "past_due" ? "Past Due" : "Canceled";
+    status === "active" ? "نشط" : status === "past_due" ? "متأخر" : "موقوف";
   return (
     <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${cls}`}>
       {label}

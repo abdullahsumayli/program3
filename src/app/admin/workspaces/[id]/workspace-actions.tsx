@@ -29,33 +29,39 @@ export default function WorkspaceActions({
     });
     const json = await res.json();
     if (!res.ok) {
-      setFeedback({ type: "err", msg: json.error ?? "Failed" });
+      setFeedback({ type: "err", msg: json.error ?? "فشلت العملية" });
       return;
     }
-    setFeedback({ type: "ok", msg: "Done" });
+    setFeedback({ type: "ok", msg: "تم بنجاح" });
     startTransition(() => router.refresh());
   }
 
   async function doDelete() {
-    if (!confirm("Are you sure you want to permanently delete this workspace and ALL its data?")) return;
+    if (!confirm("هل أنت متأكد من حذف هذه الشركة وجميع بياناتها نهائياً؟")) return;
     setFeedback(null);
     const res = await fetch(`/api/admin/workspaces/${workspaceId}`, { method: "DELETE" });
     const json = await res.json();
     if (!res.ok) {
-      setFeedback({ type: "err", msg: json.error ?? "Failed" });
+      setFeedback({ type: "err", msg: json.error ?? "فشلت العملية" });
       return;
     }
     router.push("/admin");
   }
 
   async function removeMember(userId: string, email: string) {
-    if (!confirm(`Remove ${email} from this workspace?`)) return;
+    if (!confirm(`هل تريد إزالة ${email} من هذه الشركة؟`)) return;
     await doAction({ action: "remove_member", user_id: userId });
   }
 
+  const roleLabel = (role: string) => {
+    if (role === "owner") return "مالك";
+    if (role === "admin") return "مدير";
+    return "عضو";
+  };
+
   return (
     <div className="space-y-8">
-      {/* Feedback */}
+      {/* رسالة النتيجة */}
       {feedback && (
         <div
           className={`rounded-lg border px-4 py-2.5 text-sm ${
@@ -68,11 +74,11 @@ export default function WorkspaceActions({
         </div>
       )}
 
-      {/* Subscription Management */}
-      <Section title="Subscription Management">
+      {/* إدارة الاشتراك */}
+      <Section title="إدارة الاشتراك">
         <div className="flex flex-wrap gap-3">
           <ActionButton
-            label={currentPlan === "free" ? "Upgrade to Paid" : "Downgrade to Free"}
+            label={currentPlan === "free" ? "ترقية لمدفوعة" : "تخفيض لمجانية"}
             disabled={isPending}
             onClick={() =>
               doAction({ action: "change_plan", plan: currentPlan === "free" ? "paid" : "free" })
@@ -80,7 +86,7 @@ export default function WorkspaceActions({
           />
           {currentStatus !== "active" && (
             <ActionButton
-              label="Activate"
+              label="تفعيل"
               tone="green"
               disabled={isPending}
               onClick={() => doAction({ action: "change_status", status: "active" })}
@@ -88,14 +94,14 @@ export default function WorkspaceActions({
           )}
           {currentStatus === "active" && (
             <ActionButton
-              label="Suspend"
+              label="إيقاف"
               tone="amber"
               disabled={isPending}
               onClick={() => doAction({ action: "change_status", status: "canceled" })}
             />
           )}
           <ActionButton
-            label="Extend 30 Days"
+            label="تمديد 30 يوم"
             disabled={isPending}
             onClick={() => {
               const d = new Date();
@@ -106,39 +112,39 @@ export default function WorkspaceActions({
         </div>
       </Section>
 
-      {/* Usage Controls */}
-      <Section title="Usage Controls">
+      {/* التحكم بالاستهلاك */}
+      <Section title="التحكم بالاستهلاك">
         <div className="flex flex-wrap gap-3">
           <ActionButton
-            label="Reset Usage"
+            label="تصفير الاستخدام"
             tone="amber"
             disabled={isPending}
             onClick={() => {
-              if (!confirm("Reset all usage to zero?")) return;
+              if (!confirm("هل تريد تصفير كل الاستخدام؟")) return;
               doAction({ action: "reset_usage" });
             }}
           />
           <ActionButton
-            label="Add 60 min"
+            label="إضافة 60 دقيقة"
             disabled={isPending}
             onClick={() => doAction({ action: "add_minutes", minutes: 60 })}
           />
           <ActionButton
-            label="Add 300 min"
+            label="إضافة 300 دقيقة"
             disabled={isPending}
             onClick={() => doAction({ action: "add_minutes", minutes: 300 })}
           />
         </div>
       </Section>
 
-      {/* Members */}
-      <Section title="Members">
+      {/* الأعضاء */}
+      <Section title="الأعضاء">
         <div className="overflow-hidden rounded-lg border border-gray-200">
           <table className="min-w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-200 bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                <th className="px-4 py-2.5">Email</th>
-                <th className="px-4 py-2.5">Role</th>
+              <tr className="border-b border-gray-200 bg-gray-50 text-right text-xs font-medium tracking-wider text-gray-500">
+                <th className="px-4 py-2.5">البريد الإلكتروني</th>
+                <th className="px-4 py-2.5">الصلاحية</th>
                 <th className="px-4 py-2.5"></th>
               </tr>
             </thead>
@@ -147,11 +153,11 @@ export default function WorkspaceActions({
                 <tr key={m.user_id} className="border-b border-gray-100">
                   <td className="px-4 py-3 text-gray-900">{m.email}</td>
                   <td className="px-4 py-3">
-                    <span className="inline-flex rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs font-medium capitalize text-gray-600">
-                      {m.role}
+                    <span className="inline-flex rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs font-medium text-gray-600">
+                      {roleLabel(m.role)}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-4 py-3 text-left">
                     {m.role !== "owner" && (
                       <button
                         type="button"
@@ -159,7 +165,7 @@ export default function WorkspaceActions({
                         onClick={() => removeMember(m.user_id, m.email)}
                         className="text-xs font-medium text-red-600 hover:text-red-800 disabled:opacity-50"
                       >
-                        Remove
+                        إزالة
                       </button>
                     )}
                   </td>
@@ -170,11 +176,11 @@ export default function WorkspaceActions({
         </div>
       </Section>
 
-      {/* Danger Zone */}
-      <Section title="Danger Zone">
+      {/* منطقة الخطر */}
+      <Section title="منطقة الخطر">
         <div className="rounded-lg border border-red-200 bg-red-50 p-4">
           <p className="mb-3 text-sm text-red-700">
-            Permanently delete this workspace and all associated data. This cannot be undone.
+            حذف هذه الشركة نهائياً مع جميع البيانات المرتبطة بها. لا يمكن التراجع عن هذا الإجراء.
           </p>
           <button
             type="button"
@@ -182,7 +188,7 @@ export default function WorkspaceActions({
             onClick={doDelete}
             className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
           >
-            Delete Workspace
+            حذف الشركة
           </button>
         </div>
       </Section>
@@ -193,7 +199,7 @@ export default function WorkspaceActions({
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-gray-500">{title}</h3>
+      <h3 className="mb-3 text-sm font-semibold tracking-wider text-gray-500">{title}</h3>
       {children}
     </div>
   );
