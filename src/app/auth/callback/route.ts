@@ -4,6 +4,10 @@ import { createClient } from "@/lib/supabase/server";
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
+  const oauthError =
+    searchParams.get("error_description") ??
+    searchParams.get("error") ??
+    "auth_callback_failed";
   let next = searchParams.get("next") ?? "/";
   if (!next.startsWith("/")) next = "/";
 
@@ -17,7 +21,14 @@ export async function GET(request: Request) {
       if (forwardedHost) return NextResponse.redirect(`https://${forwardedHost}${next}`);
       return NextResponse.redirect(`${origin}${next}`);
     }
+    console.error("Auth callback exchange failed", {
+      message: error.message,
+      code: error.code,
+      status: error.status,
+    });
   }
 
-  return NextResponse.redirect(`${origin}/login?error=auth_callback_failed`);
+  return NextResponse.redirect(
+    `${origin}/login?error=${encodeURIComponent(oauthError)}`
+  );
 }

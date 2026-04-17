@@ -7,9 +7,6 @@ import { createClient } from "@/lib/supabase/server";
 import { getPublicAppUrlFromEnv } from "@/lib/app-url";
 
 async function appOrigin(): Promise<string> {
-  const fromEnv = getPublicAppUrlFromEnv();
-  if (fromEnv) return fromEnv;
-
   const h = await headers();
   const originHeader = h.get("origin");
   if (originHeader) return originHeader;
@@ -27,6 +24,9 @@ async function appOrigin(): Promise<string> {
     const local = host.startsWith("localhost") || host.startsWith("127.0.0.1");
     return `${local ? "http" : "https"}://${host}`;
   }
+
+  const fromEnv = getPublicAppUrlFromEnv();
+  if (fromEnv) return fromEnv;
 
   return "";
 }
