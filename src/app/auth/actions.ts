@@ -4,6 +4,13 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
+import { getPublicAppUrlFromEnv } from "@/lib/app-url";
+
+async function appOrigin(): Promise<string> {
+  const fromEnv = getPublicAppUrlFromEnv();
+  if (fromEnv) return fromEnv;
+  return (await headers()).get("origin") ?? "";
+}
 
 export type AuthState = { error?: string; message?: string } | null;
 
@@ -44,7 +51,7 @@ export async function signUpWithEmail(
   }
 
   const supabase = await createClient();
-  const origin = (await headers()).get("origin") ?? "";
+  const origin = await appOrigin();
   const { error } = await supabase.auth.signUp({
     email,
     password,
@@ -66,7 +73,7 @@ export async function signUpWithEmail(
 export async function signInWithGoogle(formData: FormData) {
   const next = String(formData.get("next") ?? "/");
   const supabase = await createClient();
-  const origin = (await headers()).get("origin") ?? "";
+  const origin = await appOrigin();
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
