@@ -53,8 +53,8 @@ export type MeetingTask = {
 };
 
 export type WorkspaceRole = "owner" | "admin" | "member";
-export type WorkspacePlan = "free" | "paid";
-export type SubscriptionStatus = "active" | "past_due" | "canceled";
+export type WorkspacePlan = "free" | "basic" | "pro" | "enterprise";
+export type SubscriptionStatus = "active" | "trial" | "expired" | "canceled" | "past_due";
 
 export type Workspace = {
   id: string;
@@ -63,6 +63,7 @@ export type Workspace = {
   plan: WorkspacePlan;
   subscription_status: SubscriptionStatus;
   subscription_renews_at: string | null;
+  subscription_started_at: string | null;
   moyasar_subscription_id: string | null;
   created_at: string;
   updated_at: string;
@@ -94,6 +95,7 @@ export type WorkspaceSummary = {
   plan: WorkspacePlan;
   planName: string;
   subscription_status: SubscriptionStatus;
+  subscription_renews_at: string | null;
 };
 
 export type Settings = {
@@ -109,6 +111,10 @@ export type UsageSummary = {
   usedMinutes: number;
   remainingMinutes: number;
   remainingSeconds: number;
+  limitMeetings: number;
+  usedMeetings: number;
+  remainingMeetings: number;
+  unlimited: boolean;
 };
 
 export type RecordingSessionStatus = "starting" | "recording" | "completed" | "interrupted" | "error";

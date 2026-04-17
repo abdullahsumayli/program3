@@ -1,28 +1,38 @@
 import { NextResponse } from "next/server";
 import { requireWorkspace } from "@/lib/supabase/auth";
-import { PLANS } from "@/lib/billing/plans";
+import { PLANS, isPaidPlan, type PlanId } from "@/lib/billing/plans";
 import { createPayment } from "@/lib/billing/moyasar";
 
-export async function POST() {
+export async function POST(request: Request) {
   const auth = await requireWorkspace("owner");
   if (auth.error) return auth.error;
   const { workspace } = auth;
 
-  if (workspace.plan === "paid" && workspace.subscription_status === "active") {
+  const body = await request.json().catch(() => ({}));
+  const planId = (body.plan ?? "basic") as PlanId;
+
+  if (!isPaidPlan(planId) || !(planId in PLANS)) {
     return NextResponse.json(
-      { error: "Workspace is already on the paid plan" },
+      { error: "Invalid plan. Choose basic, pro, or enterprise." },
       { status: 400 }
     );
   }
 
-  const plan = PLANS.paid;
+  if (workspace.plan === planId && workspace.subscription_status === "active") {
+    return NextResponse.json(
+      { error: "Workspace is already on this plan" },
+      { status: 400 }
+    );
+  }
+
+  const plan = PLANS[planId];
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
-  const callbackUrl = `${appUrl}/settings/billing?checkout=return`;
+  const callbackUrl = `${appUrl}/billing/callback`;
 
   try {
     const payment = await createPayment({
       amountSAR: plan.priceSAR,
-      description: `${plan.name} plan — workspace ${workspace.name}`,
+      description: `${plan.name} plan — ${workspace.name}`,
       callbackUrl,
       metadata: {
         workspace_id: workspace.id,

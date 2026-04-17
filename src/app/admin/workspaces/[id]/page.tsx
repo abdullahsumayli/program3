@@ -61,8 +61,10 @@ export default async function WorkspaceDetailPage({
   const totalMinutes = meetings.reduce((s, m) => s + Math.round((m.duration ?? 0) / 60), 0);
   const tasksCompleted = tasks.filter((t) => t.status === "completed").length;
 
-  const statusLabel = (s: string) =>
-    s === "active" ? "نشط" : s === "past_due" ? "متأخر" : "موقوف";
+  const statusLabel = (s: string) => {
+    const labels: Record<string, string> = { active: "نشط", trial: "تجريبي", expired: "منتهي", canceled: "ملغي", past_due: "متأخر" };
+    return labels[s] ?? s;
+  };
 
   const processingLabel = (s: string) =>
     s === "completed" ? "مكتمل" : s === "error" ? "خطأ" : "قيد المعالجة";
@@ -92,7 +94,7 @@ export default async function WorkspaceDetailPage({
         <Card title="المعلومات العامة">
           <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
             <InfoField label="المالك" value={emailMap.get(ws.owner_id) ?? "—"} />
-            <InfoField label="الباقة" value={ws.plan === "paid" ? "مدفوعة" : "مجانية"} />
+            <InfoField label="الباقة" value={ws.plan === "free" ? "مجانية" : ws.plan} />
             <InfoField label="الحالة" value={statusLabel(ws.subscription_status)} />
             <InfoField label="تاريخ الإنشاء" value={new Date(ws.created_at).toLocaleDateString("ar-SA")} />
             <InfoField

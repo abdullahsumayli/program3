@@ -83,7 +83,10 @@ export function CompanyDashboard() {
     );
   }
 
-  const quotaBlocked = data.usage.remainingSeconds <= 0;
+  const minutesBlocked = !data.usage.unlimited && data.usage.remainingSeconds <= 0;
+  const meetingsBlocked = !data.usage.unlimited && data.usage.remainingMeetings <= 0;
+  const subscriptionExpired = data.workspace.subscription_status === "expired" || data.workspace.subscription_status === "canceled";
+  const quotaBlocked = minutesBlocked || meetingsBlocked || subscriptionExpired;
   const openTasks = data.tasks.filter((task) => task.status !== "completed");
   const overdueTasks = openTasks.filter((task) => isTaskOverdue(task));
   const completedTasks = data.tasks.filter((task) => task.status === "completed");
@@ -183,10 +186,29 @@ export function CompanyDashboard() {
         </form>
       )}
 
-      {/* Quota warning */}
-      {quotaBlocked && (
-        <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {t("dashboard.quotaEmpty")}
+      {/* Quota / subscription warnings */}
+      {subscriptionExpired && (
+        <div className="mb-6 flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <span>{t("dashboard.upgradePrompt")}</span>
+          <Link href="/billing" className="font-medium text-amber-900 underline hover:no-underline">
+            {t("billing.upgrade")}
+          </Link>
+        </div>
+      )}
+      {!subscriptionExpired && meetingsBlocked && (
+        <div className="mb-6 flex items-center justify-between rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <span>{t("dashboard.quotaMeetingsEmpty")}</span>
+          <Link href="/billing" className="font-medium text-red-800 underline hover:no-underline">
+            {t("billing.upgrade")}
+          </Link>
+        </div>
+      )}
+      {!subscriptionExpired && !meetingsBlocked && minutesBlocked && (
+        <div className="mb-6 flex items-center justify-between rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <span>{t("dashboard.quotaEmpty")}</span>
+          <Link href="/billing" className="font-medium text-red-800 underline hover:no-underline">
+            {t("billing.upgrade")}
+          </Link>
         </div>
       )}
 

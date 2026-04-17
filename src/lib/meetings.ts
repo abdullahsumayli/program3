@@ -26,12 +26,21 @@ export async function getUsageSummary(
     0
   );
   const remainingSeconds = Math.max(0, limitSeconds - usedSeconds);
+  const meetingCount = (data ?? []).length;
 
   return {
     plan: planConfig.id,
-    limitMinutes: planConfig.monthlyMinutes,
+    limitMinutes: planConfig.unlimited ? -1 : planConfig.monthlyMinutes,
     usedMinutes: Math.ceil(usedSeconds / 60),
-    remainingMinutes: Math.ceil(remainingSeconds / 60),
-    remainingSeconds,
+    remainingMinutes: planConfig.unlimited
+      ? -1
+      : Math.ceil(remainingSeconds / 60),
+    remainingSeconds: planConfig.unlimited ? 999999 : remainingSeconds,
+    limitMeetings: planConfig.unlimited ? -1 : planConfig.monthlyMeetings,
+    usedMeetings: meetingCount,
+    remainingMeetings: planConfig.unlimited
+      ? 999999
+      : Math.max(0, planConfig.monthlyMeetings - meetingCount),
+    unlimited: planConfig.unlimited,
   };
 }

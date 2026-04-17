@@ -78,12 +78,15 @@ export default function WorkspaceActions({
       <Section title="إدارة الاشتراك">
         <div className="flex flex-wrap gap-3">
           <ActionButton
-            label={currentPlan === "free" ? "ترقية لمدفوعة" : "تخفيض لمجانية"}
+            label="تغيير الباقة"
             disabled={isPending}
-            onClick={() =>
-              doAction({ action: "change_plan", plan: currentPlan === "free" ? "paid" : "free" })
-            }
+            onClick={() => {
+              const plans = ["free", "basic", "pro", "enterprise"];
+              const next = plans[(plans.indexOf(currentPlan) + 1) % plans.length];
+              doAction({ action: "change_plan", plan: next });
+            }}
           />
+          <span className="self-center text-xs text-gray-500">الحالي: {currentPlan}</span>
           {currentStatus !== "active" && (
             <ActionButton
               label="تفعيل"

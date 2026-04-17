@@ -3,6 +3,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { verifyWebhookSignature } from "@/lib/billing/moyasar";
 import { sendEmail } from "@/lib/email/client";
 import { subscriptionFailedEmail } from "@/lib/email/templates";
+import type { PlanId } from "@/lib/billing/plans";
 
 type MoyasarWebhook = {
   type?: string;
@@ -15,6 +16,8 @@ type MoyasarWebhook = {
     };
   };
 };
+
+const VALID_PLANS: PlanId[] = ["basic", "pro", "enterprise"];
 
 export async function POST(request: Request) {
   const rawBody = await request.text();
@@ -36,9 +39,13 @@ export async function POST(request: Request) {
   const paymentId = payload.data?.id;
   const status = payload.data?.status;
   const eventType = payload.type ?? "unknown";
+  const planFromMeta = payload.data?.metadata?.plan as PlanId | undefined;
 
   if (!workspaceId) {
-    return NextResponse.json({ error: "workspace_id missing in metadata" }, { status: 400 });
+    return NextResponse.json(
+      { error: "workspace_id missing in metadata" },
+      { status: 400 }
+    );
   }
 
   const supabase = createServiceClient();
@@ -55,13 +62,21 @@ export async function POST(request: Request) {
   const isRefunded = eventType === "payment_refunded" || status === "refunded";
 
   if (isPaid) {
-    const renewsAt = new Date();
-    renewsAt.setMonth(renewsAt.getMonth() + 1);
+    const selectedPlan: PlanId =
+      planFromMeta && VALID_PLANS.includes(planFromMeta)
+        ? planFromMeta
+        : "basic";
+
+    const now = new Date();
+    const renewsAt = new Date(now);
+    renewsAt.setDate(renewsAt.getDate() + 30);
+
     await supabase
       .from("workspaces")
       .update({
-        plan: "paid",
+        plan: selectedPlan,
         subscription_status: "active",
+        subscription_started_at: now.toISOString(),
         subscription_renews_at: renewsAt.toISOString(),
         moyasar_subscription_id: paymentId ?? null,
       })
@@ -79,7 +94,9 @@ export async function POST(request: Request) {
       .eq("id", workspaceId);
 
     if (ws?.owner_id) {
-      const { data: owner } = await supabase.auth.admin.getUserById(ws.owner_id);
+      const { data: owner } = await supabase.auth.admin.getUserById(
+        ws.owner_id
+      );
       const email = owner?.user?.email;
       if (email) {
         const { subject, html } = subscriptionFailedEmail({
@@ -89,14 +106,21 @@ export async function POST(request: Request) {
         try {
           await sendEmail({ to: email, subject, html });
         } catch (err) {
-          console.error("[webhook] failed to send subscription-failed email", err);
+          console.error(
+            "[webhook] failed to send subscription-failed email",
+            err
+          );
         }
       }
     }
   } else if (isRefunded) {
     await supabase
       .from("workspaces")
-      .update({ plan: "free", subscription_status: "canceled" })
+      .update({
+        plan: "free",
+        subscription_status: "canceled",
+        subscription_started_at: null,
+      })
       .eq("id", workspaceId);
   }
 

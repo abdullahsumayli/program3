@@ -9,9 +9,10 @@ export type WorkspaceContext = {
   id: string;
   name: string;
   owner_id: string;
-  plan: "free" | "paid";
-  subscription_status: "active" | "past_due" | "canceled";
+  plan: "free" | "basic" | "pro" | "enterprise";
+  subscription_status: "active" | "trial" | "expired" | "canceled" | "past_due";
   subscription_renews_at: string | null;
+  subscription_started_at: string | null;
   role: WorkspaceRole;
 };
 
@@ -32,7 +33,7 @@ export async function resolveActiveWorkspace(
 
   const { data: memberships } = await supabase
     .from("workspace_members")
-    .select("workspace_id, role, workspaces(id, name, owner_id, plan, subscription_status, subscription_renews_at)")
+    .select("workspace_id, role, workspaces(id, name, owner_id, plan, subscription_status, subscription_renews_at, subscription_started_at)")
     .eq("user_id", userId);
 
   if (!memberships || memberships.length === 0) return null;
@@ -51,9 +52,10 @@ export async function resolveActiveWorkspace(
             id: string;
             name: string;
             owner_id: string;
-            plan: "free" | "paid";
-            subscription_status: "active" | "past_due" | "canceled";
+            plan: "free" | "basic" | "pro" | "enterprise";
+            subscription_status: "active" | "trial" | "expired" | "canceled" | "past_due";
             subscription_renews_at: string | null;
+            subscription_started_at: string | null;
           }
         | null;
     };
@@ -68,6 +70,7 @@ export async function resolveActiveWorkspace(
         plan: typed.workspaces.plan,
         subscription_status: typed.workspaces.subscription_status,
         subscription_renews_at: typed.workspaces.subscription_renews_at,
+        subscription_started_at: typed.workspaces.subscription_started_at,
         role: typed.role,
       },
     });

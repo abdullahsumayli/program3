@@ -2,18 +2,26 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { CheckCircle2, CreditCard, Loader2 } from "lucide-react";
+import {
+  CheckCircle2,
+  CreditCard,
+  Loader2,
+  AlertTriangle,
+  Calendar,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { PLANS } from "@/lib/billing/plans";
+import { PLANS, isPaidPlan, type PlanId } from "@/lib/billing/plans";
 import type { UsageSummary, WorkspaceSummary } from "@/lib/supabase/types";
 import { useLanguage } from "@/lib/i18n/context";
 
+const PLAN_ORDER: PlanId[] = ["free", "basic", "pro", "enterprise"];
+
 export function BillingSettingsClient() {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const [workspace, setWorkspace] = useState<WorkspaceSummary | null>(null);
   const [usage, setUsage] = useState<UsageSummary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [action, setAction] = useState<"checkout" | "cancel" | null>(null);
+  const [action, setAction] = useState<"cancel" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = async () => {
@@ -35,25 +43,6 @@ export function BillingSettingsClient() {
     void load();
   }, []);
 
-  const startCheckout = async () => {
-    setAction("checkout");
-    setError(null);
-    try {
-      const res = await fetch("/api/billing/checkout", { method: "POST" });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.error ?? "Checkout failed");
-      if (body.redirectUrl) {
-        window.location.href = body.redirectUrl;
-        return;
-      }
-      throw new Error("No payment URL returned");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Checkout failed");
-    } finally {
-      setAction(null);
-    }
-  };
-
   const cancelSubscription = async () => {
     if (!confirm(t("billing.confirmCancel"))) return;
     setAction("cancel");
@@ -71,134 +60,264 @@ export function BillingSettingsClient() {
   };
 
   if (loading || !workspace || !usage) {
-    return <div className="mx-auto max-w-4xl px-4 py-16 text-center text-slate-500">{t("common.loading")}</div>;
+    return (
+      <div className="mx-auto max-w-4xl px-4 py-16 text-center text-slate-500">
+        {t("common.loading")}
+      </div>
+    );
   }
 
   const isOwner = workspace.role === "owner";
-  const isPaid = workspace.plan === "paid";
-  const usedPct = Math.min(100, Math.round((usage.usedMinutes / usage.limitMinutes) * 100));
+  const paid = isPaidPlan(workspace.plan);
+  const plan = PLANS[workspace.plan] ?? PLANS.free;
+  const isActive = workspace.subscription_status === "active";
+  const isExpired =
+    workspace.subscription_status === "expired" ||
+    workspace.subscription_status === "canceled";
+
+  const minutesPct = usage.unlimited
+    ? 0
+    : Math.min(100, Math.round((usage.usedMinutes / usage.limitMinutes) * 100));
+  const meetingsPct = usage.unlimited
+    ? 0
+    : Math.min(
+        100,
+        Math.round((usage.usedMeetings / usage.limitMeetings) * 100)
+      );
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8">
-      <h1 className="text-2xl font-semibold text-slate-900">{t("billing.title")}</h1>
-      <p className="mt-1 text-sm text-slate-500">
-        {workspace.name} ·{" "}
-        <Link href="/settings/workspace" className="text-blue-600 hover:underline">
-          {t("billing.workspaceSettingsLink")}
-        </Link>
-      </p>
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold text-slate-900">
+          {t("billing.title")}
+        </h2>
+        <p className="mt-1 text-sm text-slate-500">
+          {workspace.name} ·{" "}
+          <Link
+            href="/settings/workspace"
+            className="text-blue-600 hover:underline"
+          >
+            {t("billing.workspaceSettingsLink")}
+          </Link>
+        </p>
+      </div>
 
-      {error ? (
-        <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
-      ) : null}
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
 
-      <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
+      {isExpired && (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <AlertTriangle size={18} className="mt-0.5 text-amber-600" />
+          <div className="text-sm text-amber-800">
+            <p className="font-medium">{t("billing.expiredBanner")}</p>
+            <p className="mt-1">{t("billing.expiredBannerDetail")}</p>
+          </div>
+        </div>
+      )}
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <div className="text-xs font-medium uppercase tracking-wide text-slate-500">{t("billing.currentPlan")}</div>
-            <div className="mt-1 text-2xl font-semibold text-slate-900">{workspace.planName}</div>
-            <div className="mt-1 text-sm text-slate-500">
-              {isPaid ? `${PLANS.paid.priceSAR} ${t("billing.sarPerMonth")}` : t("billing.freeLabel")} ·{" "}
-              {t("billing.statusLabel")} {workspace.subscription_status}
+            <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              {t("billing.currentPlan")}
             </div>
+            <div className="mt-1 text-2xl font-semibold text-slate-900">
+              {plan.name}
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-500">
+              <span>
+                {paid
+                  ? `${plan.priceSAR} ${t("billing.sarPerMonth")}`
+                  : t("billing.freeLabel")}
+              </span>
+              <span>·</span>
+              <StatusBadge status={workspace.subscription_status} t={t} />
+            </div>
+            {workspace.subscription_renews_at && paid && (
+              <div className="mt-2 flex items-center gap-1.5 text-xs text-slate-500">
+                <Calendar size={12} />
+                {t("billing.renewsOn", {
+                  date: new Date(
+                    workspace.subscription_renews_at
+                  ).toLocaleDateString(
+                    locale === "ar" ? "ar-SA" : "en-US",
+                    { year: "numeric", month: "long", day: "numeric" }
+                  ),
+                })}
+              </div>
+            )}
           </div>
-          {isOwner ? (
+
+          {isOwner && (
             <div className="flex gap-2">
-              {!isPaid ? (
-                <Button onClick={startCheckout} disabled={action !== null}>
-                  {action === "checkout" ? <Loader2 size={14} className="animate-spin" /> : <CreditCard size={14} />}
-                  {t("billing.upgrade")}
+              <Link href="/billing">
+                <Button>
+                  <CreditCard size={14} />
+                  {paid ? t("billing.changePlan") : t("billing.upgrade")}
                 </Button>
-              ) : workspace.subscription_status === "active" ? (
-                <Button variant="outline" onClick={cancelSubscription} disabled={action !== null}>
-                  {action === "cancel" ? <Loader2 size={14} className="animate-spin" /> : null}
+              </Link>
+              {paid && isActive && (
+                <Button
+                  variant="outline"
+                  onClick={cancelSubscription}
+                  disabled={action !== null}
+                >
+                  {action === "cancel" ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : null}
                   {t("billing.cancel")}
-                </Button>
-              ) : (
-                <Button onClick={startCheckout} disabled={action !== null}>
-                  {action === "checkout" ? <Loader2 size={14} className="animate-spin" /> : <CreditCard size={14} />}
-                  {t("billing.renew")}
                 </Button>
               )}
             </div>
-          ) : null}
+          )}
         </div>
 
-        <div className="mt-6">
-          <div className="mb-2 flex items-center justify-between text-sm">
-            <span className="text-slate-700">{t("billing.usageThisMonth")}</span>
-            <span className="font-medium text-slate-900">
-              {usage.usedMinutes} / {usage.limitMinutes} {t("billing.minutes")}
-            </span>
-          </div>
-          <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-            <div
-              className={`h-full ${usedPct >= 100 ? "bg-red-500" : usedPct >= 80 ? "bg-amber-500" : "bg-emerald-500"}`}
-              style={{ width: `${usedPct}%` }}
-            />
-          </div>
-          <div className="mt-2 text-xs text-slate-500">
-            {t("billing.minutesRemaining", { count: usage.remainingMinutes })}
-          </div>
+        <div className="mt-6 space-y-4">
+          <UsageBar
+            label={t("billing.minutesThisMonth")}
+            used={usage.usedMinutes}
+            limit={usage.unlimited ? -1 : usage.limitMinutes}
+            unit={t("billing.minutes")}
+            pct={minutesPct}
+            unlimited={usage.unlimited}
+          />
+          <UsageBar
+            label={t("billing.meetingsThisMonth")}
+            used={usage.usedMeetings}
+            limit={usage.unlimited ? -1 : usage.limitMeetings}
+            unit={t("dashboard.meetings")}
+            pct={meetingsPct}
+            unlimited={usage.unlimited}
+          />
         </div>
       </section>
 
-      <section className="mt-6 grid gap-4 md:grid-cols-2">
-        <PlanCard
-          name={t("billing.planFree")}
-          price={PLANS.free.priceSAR}
-          minutes={PLANS.free.monthlyMinutes}
-          members={PLANS.free.maxMembers}
-          current={!isPaid}
-        />
-        <PlanCard
-          name={t("billing.planPaid")}
-          price={PLANS.paid.priceSAR}
-          minutes={PLANS.paid.monthlyMinutes}
-          members={PLANS.paid.maxMembers}
-          current={isPaid}
-        />
+      <section className="grid gap-4 md:grid-cols-4">
+        {PLAN_ORDER.map((planId) => {
+          const p = PLANS[planId];
+          const isCurrent = workspace.plan === planId;
+          return (
+            <div
+              key={planId}
+              className={`rounded-2xl border p-5 ${
+                isCurrent
+                  ? "border-blue-400 bg-blue-50"
+                  : "border-slate-200 bg-white"
+              }`}
+            >
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="text-base font-semibold text-slate-900">
+                    {p.name}
+                  </div>
+                  <div className="mt-1 text-xl font-bold text-slate-900">
+                    {p.priceSAR}{" "}
+                    <span className="text-xs font-normal text-slate-500">
+                      SAR
+                    </span>
+                  </div>
+                </div>
+                {isCurrent && (
+                  <span className="rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-medium text-white">
+                    {t("billing.current")}
+                  </span>
+                )}
+              </div>
+              <ul className="mt-3 space-y-1.5 text-xs text-slate-600">
+                <li className="flex items-center gap-1.5">
+                  <CheckCircle2 size={12} className="text-emerald-600" />
+                  {p.unlimited
+                    ? t("billing.feature.unlimitedMeetings")
+                    : t("billing.feature.meetings", {
+                        count: p.monthlyMeetings,
+                      })}
+                </li>
+                <li className="flex items-center gap-1.5">
+                  <CheckCircle2 size={12} className="text-emerald-600" />
+                  {p.unlimited
+                    ? t("billing.feature.unlimitedMinutes")
+                    : t("billing.feature.minutes", {
+                        count: p.monthlyMinutes,
+                      })}
+                </li>
+                <li className="flex items-center gap-1.5">
+                  <CheckCircle2 size={12} className="text-emerald-600" />
+                  {t("billing.feature.members", { count: p.maxMembers })}
+                </li>
+              </ul>
+            </div>
+          );
+        })}
       </section>
     </div>
   );
 }
 
-function PlanCard({
-  name,
-  price,
-  minutes,
-  members,
-  current,
+function UsageBar({
+  label,
+  used,
+  limit,
+  unit,
+  pct,
+  unlimited,
 }: {
-  name: string;
-  price: number;
-  minutes: number;
-  members: number;
-  current: boolean;
+  label: string;
+  used: number;
+  limit: number;
+  unit: string;
+  pct: number;
+  unlimited: boolean;
 }) {
   return (
-    <div className={`rounded-2xl border p-6 ${current ? "border-blue-400 bg-blue-50" : "border-slate-200 bg-white"}`}>
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="text-lg font-semibold text-slate-900">{name}</div>
-          <div className="mt-1 text-2xl font-bold text-slate-900">
-            {price} <span className="text-sm font-normal text-slate-500">SAR / month</span>
-          </div>
-        </div>
-        {current ? (
-          <span className="rounded-full bg-blue-600 px-2 py-1 text-xs font-medium text-white">Current</span>
-        ) : null}
+    <div>
+      <div className="mb-1.5 flex items-center justify-between text-sm">
+        <span className="text-slate-700">{label}</span>
+        <span className="font-medium text-slate-900">
+          {used} / {unlimited ? "∞" : limit} {unit}
+        </span>
       </div>
-      <ul className="mt-4 space-y-2 text-sm text-slate-700">
-        <li className="flex items-center gap-2">
-          <CheckCircle2 size={14} className="text-emerald-600" />
-          {minutes.toLocaleString()} minutes / month
-        </li>
-        <li className="flex items-center gap-2">
-          <CheckCircle2 size={14} className="text-emerald-600" />
-          Up to {members} {members === 1 ? "member" : "members"}
-        </li>
-      </ul>
+      <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+        <div
+          className={`h-full transition-all ${
+            unlimited
+              ? "bg-emerald-500"
+              : pct >= 100
+                ? "bg-red-500"
+                : pct >= 80
+                  ? "bg-amber-500"
+                  : "bg-emerald-500"
+          }`}
+          style={{ width: unlimited ? "5%" : `${pct}%` }}
+        />
+      </div>
     </div>
+  );
+}
+
+function StatusBadge({
+  status,
+  t,
+}: {
+  status: string;
+  t: (key: string) => string;
+}) {
+  const styles: Record<string, string> = {
+    active: "bg-emerald-50 text-emerald-700",
+    trial: "bg-blue-50 text-blue-700",
+    expired: "bg-red-50 text-red-700",
+    canceled: "bg-amber-50 text-amber-700",
+    past_due: "bg-red-50 text-red-700",
+  };
+  return (
+    <span
+      className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+        styles[status] ?? "bg-slate-100 text-slate-600"
+      }`}
+    >
+      {t(`billing.status.${status}`)}
+    </span>
   );
 }

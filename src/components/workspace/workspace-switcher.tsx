@@ -11,7 +11,7 @@ type Workspace = {
   id: string;
   name: string;
   role: "owner" | "admin" | "member";
-  plan: "free" | "paid";
+  plan: "free" | "basic" | "pro" | "enterprise";
 };
 
 export function WorkspaceSwitcher() {

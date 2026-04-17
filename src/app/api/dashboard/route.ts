@@ -9,7 +9,7 @@ export async function GET() {
   const { supabase, workspace } = auth;
 
   const usage = await getUsageSummary(supabase, workspace.id, workspace.plan);
-  const plan = PLANS[workspace.plan];
+  const plan = PLANS[workspace.plan] ?? PLANS.free;
 
   const [
     { data: meetings, error: meetingsError },
@@ -62,6 +62,7 @@ export async function GET() {
       plan: workspace.plan,
       planName: plan.name,
       subscription_status: workspace.subscription_status,
+      subscription_renews_at: workspace.subscription_renews_at,
     },
     meetings: meetings ?? [],
     decisions: (decisions ?? []).map((decision) => ({

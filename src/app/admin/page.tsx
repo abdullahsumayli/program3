@@ -191,11 +191,20 @@ function StatCard({
 }
 
 function PlanBadge({ plan }: { plan: string }) {
-  const cls =
-    plan === "paid"
-      ? "border-blue-200 bg-blue-50 text-blue-700"
-      : "border-gray-200 bg-gray-50 text-gray-600";
-  const label = plan === "paid" ? "مدفوعة" : "مجانية";
+  const styles: Record<string, string> = {
+    free: "border-gray-200 bg-gray-50 text-gray-600",
+    basic: "border-blue-200 bg-blue-50 text-blue-700",
+    pro: "border-purple-200 bg-purple-50 text-purple-700",
+    enterprise: "border-amber-200 bg-amber-50 text-amber-700",
+  };
+  const labels: Record<string, string> = {
+    free: "مجانية",
+    basic: "أساسي",
+    pro: "احترافي",
+    enterprise: "مؤسسات",
+  };
+  const cls = styles[plan] ?? styles.free;
+  const label = labels[plan] ?? plan;
   return (
     <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${cls}`}>
       {label}

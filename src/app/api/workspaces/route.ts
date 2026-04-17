@@ -8,7 +8,7 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from("workspace_members")
-    .select("role, workspaces(id, name, owner_id, plan, subscription_status, subscription_renews_at, created_at)")
+    .select("role, workspaces(id, name, owner_id, plan, subscription_status, subscription_renews_at, subscription_started_at, created_at)")
     .eq("user_id", user.id);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

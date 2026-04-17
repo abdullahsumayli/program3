@@ -1,29 +1,46 @@
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getUsageSummary } from "@/lib/meetings";
+import { isPaidPlan } from "@/lib/billing/plans";
 import type { WorkspaceContext } from "@/lib/workspace/context";
 
 /**
- * Returns a 403 NextResponse if the workspace has exhausted its quota,
+ * Returns a 402 NextResponse if the workspace cannot start a new recording,
  * or null to indicate it can proceed.
+ *
+ * Checks:
+ *   1. Subscription is active (or trial, or free plan)
+ *   2. Monthly meeting count within limit
+ *   3. Monthly minutes within limit
  */
 export async function enforceQuota(
   supabase: SupabaseClient,
   workspace: WorkspaceContext
 ): Promise<NextResponse | null> {
   const now = Date.now();
-  const renewsAtMs = workspace.subscription_renews_at ? Date.parse(workspace.subscription_renews_at) : null;
+  const renewsAtMs = workspace.subscription_renews_at
+    ? Date.parse(workspace.subscription_renews_at)
+    : null;
   const withinPaidPeriod =
-    workspace.plan === "paid" &&
+    isPaidPlan(workspace.plan) &&
     renewsAtMs !== null &&
     Number.isFinite(renewsAtMs) &&
     renewsAtMs > now;
 
-  // Free workspaces should not be blocked by subscription status.
-  // Paid workspaces keep access until `subscription_renews_at` even if canceled.
+  if (workspace.subscription_status === "expired") {
+    return NextResponse.json(
+      {
+        error: "subscription_expired",
+        message: "Subscription has expired. Please renew to continue recording.",
+      },
+      { status: 402 }
+    );
+  }
+
   if (
-    workspace.plan === "paid" &&
+    isPaidPlan(workspace.plan) &&
     workspace.subscription_status !== "active" &&
+    workspace.subscription_status !== "trial" &&
     !withinPaidPeriod
   ) {
     return NextResponse.json(
@@ -36,6 +53,19 @@ export async function enforceQuota(
   }
 
   const usage = await getUsageSummary(supabase, workspace.id, workspace.plan);
+
+  if (usage.remainingMeetings <= 0) {
+    return NextResponse.json(
+      {
+        error: "meeting_limit_reached",
+        plan: usage.plan,
+        limitMeetings: usage.limitMeetings,
+        message: "Monthly meeting limit reached.",
+      },
+      { status: 402 }
+    );
+  }
+
   if (usage.remainingSeconds <= 0) {
     return NextResponse.json(
       {
@@ -49,4 +79,22 @@ export async function enforceQuota(
   }
 
   return null;
+}
+
+/**
+ * Lighter check: returns true if the subscription allows any activity at all
+ * (viewing is always allowed, but recording/uploading may be blocked).
+ */
+export function isSubscriptionActive(workspace: WorkspaceContext): boolean {
+  if (workspace.plan === "free") return true;
+  if (
+    workspace.subscription_status === "active" ||
+    workspace.subscription_status === "trial"
+  ) {
+    return true;
+  }
+  if (workspace.subscription_renews_at) {
+    return Date.parse(workspace.subscription_renews_at) > Date.now();
+  }
+  return false;
 }

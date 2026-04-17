@@ -17,7 +17,7 @@ export async function PATCH(
   switch (action) {
     case "change_plan": {
       const { plan } = body as { plan: string };
-      if (!["free", "paid"].includes(plan)) {
+      if (!["free", "basic", "pro", "enterprise"].includes(plan)) {
         return NextResponse.json({ error: "Invalid plan" }, { status: 400 });
       }
       const { error } = await db
@@ -30,7 +30,7 @@ export async function PATCH(
 
     case "change_status": {
       const { status } = body as { status: string };
-      if (!["active", "past_due", "canceled"].includes(status)) {
+      if (!["active", "trial", "expired", "canceled", "past_due"].includes(status)) {
         return NextResponse.json({ error: "Invalid status" }, { status: 400 });
       }
       const { error } = await db
