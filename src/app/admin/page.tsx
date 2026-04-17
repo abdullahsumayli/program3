@@ -1,253 +1,219 @@
-import type { ReactNode } from "react";
-import { notFound, redirect } from "next/navigation";
-import { isAdminEmail } from "@/lib/admin";
-import { createClient } from "@/lib/supabase/server";
+import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { RecordingSession } from "@/lib/supabase/types";
+import type { Workspace } from "@/lib/supabase/types";
 
-export default async function AdminPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+type WorkspaceRow = Workspace & {
+  member_count: number;
+  meeting_count: number;
+  total_minutes: number;
+  last_activity: string | null;
+  owner_email: string;
+};
 
-  if (!user) {
-    redirect("/login?next=/admin");
-  }
+export default async function AdminCustomersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string }>;
+}) {
+  const { q } = await searchParams;
+  const db = createAdminClient();
 
-  if (!isAdminEmail(user.email)) {
-    notFound();
-  }
+  const wsQuery = db.from("workspaces").select("*").order("created_at", { ascending: false });
+  if (q) wsQuery.ilike("name", `%${q}%`);
+  const { data: workspaces } = await wsQuery;
+  const ws = (workspaces ?? []) as Workspace[];
 
-  const adminSupabase = createAdminClient();
-  const { data, error } = await adminSupabase
-    .from("recording_sessions")
-    .select("*")
-    .order("started_at", { ascending: false })
-    .limit(200);
+  const wsIds = ws.map((w) => w.id);
 
-  if (error) {
-    throw new Error(error.message);
-  }
+  const [membersRes, meetingsRes, usersRes] = await Promise.all([
+    db.from("workspace_members").select("workspace_id").in("workspace_id", wsIds),
+    db.from("meetings").select("workspace_id, duration, created_at").in("workspace_id", wsIds),
+    db.auth.admin.listUsers({ perPage: 1000 }),
+  ]);
 
-  const sessions = (data ?? []) as RecordingSession[];
-  const openSessions = sessions.filter(
-    (session) => !session.ended_at && (session.status === "starting" || session.status === "recording")
+  const emailMap = new Map(
+    (usersRes.data?.users ?? []).map((u) => [u.id, u.email ?? "—"])
   );
-  const interruptedSessions = sessions.filter((session) => session.status === "interrupted");
-  const errorSessions = sessions.filter((session) => session.status === "error");
-  const completedSessions = sessions.filter((session) => session.status === "completed");
-  const attentionSessions = sessions.filter(
-    (session) => session.status === "interrupted" || session.status === "error" || !session.ended_at
-  );
+
+  const memberCounts = new Map<string, number>();
+  for (const m of membersRes.data ?? []) {
+    memberCounts.set(m.workspace_id, (memberCounts.get(m.workspace_id) ?? 0) + 1);
+  }
+
+  const meetingStats = new Map<string, { count: number; minutes: number; lastActivity: string | null }>();
+  for (const m of meetingsRes.data ?? []) {
+    const prev = meetingStats.get(m.workspace_id) ?? { count: 0, minutes: 0, lastActivity: null };
+    prev.count++;
+    prev.minutes += Math.round((m.duration ?? 0) / 60);
+    if (!prev.lastActivity || m.created_at > prev.lastActivity) {
+      prev.lastActivity = m.created_at;
+    }
+    meetingStats.set(m.workspace_id, prev);
+  }
+
+  const rows: WorkspaceRow[] = ws.map((w) => ({
+    ...w,
+    owner_email: emailMap.get(w.owner_id) ?? "—",
+    member_count: memberCounts.get(w.id) ?? 0,
+    meeting_count: meetingStats.get(w.id)?.count ?? 0,
+    total_minutes: meetingStats.get(w.id)?.minutes ?? 0,
+    last_activity: meetingStats.get(w.id)?.lastActivity ?? null,
+  }));
+
+  const totalUsers = [...memberCounts.values()].reduce((a, b) => a + b, 0);
+  const activeCount = rows.filter((r) => r.subscription_status === "active").length;
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8">
-      <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <div className="text-sm font-medium uppercase tracking-[0.2em] text-gray-500">
-            Admin
-          </div>
-          <h1 className="mt-2 text-3xl font-semibold text-gray-900">Recording Diagnostics</h1>
-          <p className="mt-2 max-w-3xl text-sm text-gray-600">
-            Monitor recording health across customers. Sessions that stop unexpectedly or stop
-            sending heartbeats will surface here even if the customer never explains the issue
-            clearly in their support ticket.
-          </p>
-        </div>
-        <div className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600 shadow-sm">
-          Signed in as <span className="font-medium text-gray-900">{user.email}</span>
-        </div>
+    <>
+      <div className="mb-8">
+        <h1 className="text-2xl font-semibold text-gray-900">Customers</h1>
+        <p className="mt-1 text-sm text-gray-500">
+          Manage all workspaces, subscriptions, and usage.
+        </p>
       </div>
 
-      <div className="mb-8 grid gap-4 md:grid-cols-4">
-        <SummaryCard label="Need Attention" value={attentionSessions.length} tone="red" />
-        <SummaryCard label="Interrupted" value={interruptedSessions.length} tone="amber" />
-        <SummaryCard label="Errors" value={errorSessions.length} tone="red" />
-        <SummaryCard label="Completed" value={completedSessions.length} tone="green" />
+      {/* Stats */}
+      <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard label="Total Workspaces" value={rows.length} />
+        <StatCard label="Active" value={activeCount} tone="green" />
+        <StatCard label="Total Users" value={totalUsers} />
+        <StatCard
+          label="Total Meetings"
+          value={rows.reduce((s, r) => s + r.meeting_count, 0)}
+        />
       </div>
 
-      <section className="mb-8 rounded-2xl border border-gray-200 bg-white shadow-sm">
-        <div className="border-b border-gray-200 px-5 py-4">
-          <h2 className="text-lg font-semibold text-gray-900">Attention Needed</h2>
-          <p className="mt-1 text-sm text-gray-600">
-            Interrupted sessions, explicit errors, or sessions that are still marked open. For open
-            sessions, the heartbeat column tells you the last time the browser checked in.
-          </p>
+      {/* Search */}
+      <form action="/admin" method="GET" className="mb-6">
+        <div className="relative max-w-md">
+          <svg
+            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input
+            name="q"
+            type="text"
+            defaultValue={q ?? ""}
+            placeholder="Search by company name..."
+            className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-10 pr-4 text-sm text-gray-900 placeholder-gray-400 focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500"
+          />
         </div>
+      </form>
+
+      {/* Table */}
+      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
-            <thead className="bg-gray-50 text-left text-gray-600">
-              <tr>
-                <HeaderCell>User</HeaderCell>
-                <HeaderCell>Status</HeaderCell>
-                <HeaderCell>Started</HeaderCell>
-                <HeaderCell>Heartbeat</HeaderCell>
-                <HeaderCell>Duration</HeaderCell>
-                <HeaderCell>Mode</HeaderCell>
-                <HeaderCell>Retries</HeaderCell>
-                <HeaderCell>Last Error</HeaderCell>
+            <thead>
+              <tr className="border-b border-gray-200 bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className="px-5 py-3">Company</th>
+                <th className="px-5 py-3">Users</th>
+                <th className="px-5 py-3">Plan</th>
+                <th className="px-5 py-3">Status</th>
+                <th className="px-5 py-3">Registered</th>
+                <th className="px-5 py-3">Last Activity</th>
+                <th className="px-5 py-3"></th>
               </tr>
             </thead>
             <tbody>
-              {attentionSessions.length === 0 ? (
+              {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-5 py-8 text-center text-gray-500">
-                    No interrupted or stale sessions right now.
+                  <td colSpan={7} className="px-5 py-12 text-center text-gray-500">
+                    {q ? "No workspaces match your search." : "No workspaces found."}
                   </td>
                 </tr>
               ) : (
-                attentionSessions.map((session) => (
-                  <tr key={session.id} className="border-t border-gray-100 align-top">
-                    <BodyCell>
-                      <div className="font-medium text-gray-900">{session.user_email ?? session.user_id}</div>
-                      <div className="mt-1 text-xs text-gray-500">{session.id}</div>
-                    </BodyCell>
-                    <BodyCell>
-                      <StatusBadge status={session.ended_at ? session.status : "open"} />
-                    </BodyCell>
-                    <BodyCell>{formatDate(session.started_at)}</BodyCell>
-                    <BodyCell>{formatDate(session.last_heartbeat_at)}</BodyCell>
-                    <BodyCell>{formatDuration(session.duration_seconds)}</BodyCell>
-                    <BodyCell>{session.recording_mode}</BodyCell>
-                    <BodyCell>{session.interruption_count}</BodyCell>
-                    <BodyCell>
-                      <div className="max-w-sm whitespace-pre-wrap text-gray-700">
-                        {session.last_error_message || "—"}
-                      </div>
-                      {session.last_error_status && (
-                        <div className="mt-1 text-xs uppercase tracking-wide text-gray-500">
-                          {session.last_error_status}
-                        </div>
-                      )}
-                    </BodyCell>
+                rows.map((r) => (
+                  <tr key={r.id} className="border-b border-gray-100 hover:bg-gray-50/50">
+                    <td className="px-5 py-4">
+                      <div className="font-medium text-gray-900">{r.name}</div>
+                      <div className="mt-0.5 text-xs text-gray-400">{r.owner_email}</div>
+                    </td>
+                    <td className="px-5 py-4 text-gray-700">{r.member_count}</td>
+                    <td className="px-5 py-4">
+                      <PlanBadge plan={r.plan} />
+                    </td>
+                    <td className="px-5 py-4">
+                      <StatusBadge status={r.subscription_status} />
+                    </td>
+                    <td className="px-5 py-4 text-gray-500">
+                      {new Date(r.created_at).toLocaleDateString()}
+                    </td>
+                    <td className="px-5 py-4 text-gray-500">
+                      {r.last_activity
+                        ? new Date(r.last_activity).toLocaleDateString()
+                        : "—"}
+                    </td>
+                    <td className="px-5 py-4 text-right">
+                      <Link
+                        href={`/admin/workspaces/${r.id}`}
+                        className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100"
+                      >
+                        Details
+                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                        </svg>
+                      </Link>
+                    </td>
                   </tr>
                 ))
               )}
             </tbody>
           </table>
         </div>
-      </section>
-
-      <section className="rounded-2xl border border-gray-200 bg-white shadow-sm">
-        <div className="border-b border-gray-200 px-5 py-4">
-          <h2 className="text-lg font-semibold text-gray-900">Recent Sessions</h2>
-          <p className="mt-1 text-sm text-gray-600">
-            Last {sessions.length} captured recording sessions across all customers.
-          </p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="bg-gray-50 text-left text-gray-600">
-              <tr>
-                <HeaderCell>User</HeaderCell>
-                <HeaderCell>Status</HeaderCell>
-                <HeaderCell>Started</HeaderCell>
-                <HeaderCell>Ended</HeaderCell>
-                <HeaderCell>Duration</HeaderCell>
-                <HeaderCell>Mode</HeaderCell>
-                <HeaderCell>System Audio</HeaderCell>
-                <HeaderCell>Meeting</HeaderCell>
-              </tr>
-            </thead>
-            <tbody>
-              {sessions.map((session) => (
-                <tr key={session.id} className="border-t border-gray-100 align-top">
-                  <BodyCell>
-                    <div className="font-medium text-gray-900">{session.user_email ?? session.user_id}</div>
-                    <div className="mt-1 text-xs text-gray-500">{session.id}</div>
-                  </BodyCell>
-                  <BodyCell>
-                    <StatusBadge status={session.ended_at ? session.status : "open"} />
-                  </BodyCell>
-                  <BodyCell>{formatDate(session.started_at)}</BodyCell>
-                  <BodyCell>{session.ended_at ? formatDate(session.ended_at) : "—"}</BodyCell>
-                  <BodyCell>{formatDuration(session.duration_seconds)}</BodyCell>
-                  <BodyCell>{session.recording_mode}</BodyCell>
-                  <BodyCell>{session.system_audio_active ? "Active" : "Off"}</BodyCell>
-                  <BodyCell>{session.meeting_id ?? "—"}</BodyCell>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      {openSessions.length > 0 && (
-        <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800">
-          {openSessions.length} session{openSessions.length === 1 ? "" : "s"} still look open. If
-          the heartbeat is old and the customer says the recorder stopped, that usually means the
-          tab closed, the browser crashed, or the network dropped before the session could close
-          cleanly.
-        </div>
-      )}
-    </div>
+      </div>
+    </>
   );
 }
 
-function SummaryCard({
+function StatCard({
   label,
   value,
   tone,
 }: {
   label: string;
   value: number;
-  tone: "green" | "amber" | "red";
+  tone?: "green";
 }) {
-  const toneClass =
-    tone === "green"
-      ? "border-green-200 bg-green-50 text-green-700"
-      : tone === "amber"
-        ? "border-amber-200 bg-amber-50 text-amber-700"
-        : "border-red-200 bg-red-50 text-red-700";
-
   return (
-    <div className={`rounded-2xl border px-5 py-4 shadow-sm ${toneClass}`}>
-      <div className="text-sm font-medium">{label}</div>
-      <div className="mt-2 text-3xl font-semibold">{value}</div>
+    <div className="rounded-xl border border-gray-200 bg-white px-5 py-4 shadow-sm">
+      <div className="text-xs font-medium uppercase tracking-wider text-gray-500">{label}</div>
+      <div className={`mt-2 text-2xl font-semibold ${tone === "green" ? "text-green-600" : "text-gray-900"}`}>
+        {value}
+      </div>
     </div>
   );
 }
 
-function HeaderCell({ children }: { children: ReactNode }) {
-  return <th className="px-5 py-3 font-medium">{children}</th>;
-}
-
-function BodyCell({ children }: { children: ReactNode }) {
-  return <td className="px-5 py-4 text-gray-700">{children}</td>;
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const classes =
-    status === "completed"
-      ? "border-green-200 bg-green-50 text-green-700"
-      : status === "open"
-        ? "border-amber-200 bg-amber-50 text-amber-800"
-        : status === "interrupted"
-          ? "border-amber-200 bg-amber-50 text-amber-700"
-          : "border-red-200 bg-red-50 text-red-700";
-
+function PlanBadge({ plan }: { plan: string }) {
+  const cls =
+    plan === "paid"
+      ? "border-blue-200 bg-blue-50 text-blue-700"
+      : "border-gray-200 bg-gray-50 text-gray-600";
   return (
-    <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${classes}`}>
-      {status}
+    <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium capitalize ${cls}`}>
+      {plan}
     </span>
   );
 }
 
-function formatDate(value: string) {
-  return new Date(value).toLocaleString();
-}
-
-function formatDuration(totalSeconds: number) {
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-
-  if (hours > 0) {
-    return `${hours}h ${minutes}m ${seconds}s`;
-  }
-  if (minutes > 0) {
-    return `${minutes}m ${seconds}s`;
-  }
-  return `${seconds}s`;
+function StatusBadge({ status }: { status: string }) {
+  const cls =
+    status === "active"
+      ? "border-green-200 bg-green-50 text-green-700"
+      : status === "past_due"
+        ? "border-amber-200 bg-amber-50 text-amber-700"
+        : "border-red-200 bg-red-50 text-red-700";
+  const label =
+    status === "active" ? "Active" : status === "past_due" ? "Past Due" : "Canceled";
+  return (
+    <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${cls}`}>
+      {label}
+    </span>
+  );
 }
