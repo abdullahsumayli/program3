@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { setMeetingLimitOverride } from "@/lib/billing/meeting-limit-overrides";
 
 export async function PATCH(
   request: Request,
@@ -64,13 +65,11 @@ export async function PATCH(
         monthlyMeetingLimitOverride = limit;
       }
 
-      const { error } = await db
-        .from("workspaces")
-        .update({
-          monthly_meeting_limit_override: monthlyMeetingLimitOverride,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", id);
+      const { error } = await setMeetingLimitOverride(
+        db,
+        id,
+        monthlyMeetingLimitOverride
+      );
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
       return NextResponse.json({ ok: true });
     }

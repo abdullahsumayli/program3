@@ -3,6 +3,7 @@ import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Workspace, Meeting } from "@/lib/supabase/types";
 import { getPlan } from "@/lib/billing/plans";
+import { getMeetingLimitOverride } from "@/lib/billing/meeting-limit-overrides";
 import WorkspaceActions from "./workspace-actions";
 
 export default async function WorkspaceDetailPage({
@@ -22,7 +23,7 @@ export default async function WorkspaceDetailPage({
   if (!wsData) notFound();
   const ws = wsData as Workspace;
 
-  const [membersRes, meetingsRes, tasksRes, usageRes, sessionsRes, usersRes] =
+  const [membersRes, meetingsRes, tasksRes, usageRes, sessionsRes, usersRes, meetingLimitOverride] =
     await Promise.all([
       db.from("workspace_members").select("*").eq("workspace_id", id),
       db.from("meetings").select("id, title, duration, source_type, processing_status, created_at").eq("workspace_id", id).order("created_at", { ascending: false }).limit(50),
@@ -30,6 +31,7 @@ export default async function WorkspaceDetailPage({
       db.from("usage_counters").select("*").eq("workspace_id", id).maybeSingle(),
       db.from("recording_sessions").select("id, user_email, status, recording_mode, duration_seconds, started_at").eq("workspace_id", id).order("started_at", { ascending: false }).limit(20),
       db.auth.admin.listUsers({ perPage: 1000 }),
+      getMeetingLimitOverride(db, id),
     ]);
 
   const emailMap = new Map(
@@ -63,10 +65,10 @@ export default async function WorkspaceDetailPage({
   const tasksCompleted = tasks.filter((t) => t.status === "completed").length;
   const planConfig = getPlan(ws.plan);
   const meetingLimitLabel =
-    ws.monthly_meeting_limit_override === -1
+    meetingLimitOverride === -1
       ? "مفتوح"
-      : ws.monthly_meeting_limit_override
-        ? `${ws.monthly_meeting_limit_override} شهرياً`
+      : meetingLimitOverride
+        ? `${meetingLimitOverride} شهرياً`
         : planConfig.unlimited
           ? "مفتوح حسب الباقة"
           : `${planConfig.monthlyMeetings} حسب الباقة`;
@@ -135,11 +137,11 @@ export default async function WorkspaceDetailPage({
         {/* تحكم الأدمن */}
         <Card title="تحكم الأدمن">
           <WorkspaceActions
-            key={`${ws.id}:${ws.monthly_meeting_limit_override ?? "plan"}`}
+            key={`${ws.id}:${meetingLimitOverride ?? "plan"}`}
             workspaceId={ws.id}
             currentPlan={ws.plan}
             currentStatus={ws.subscription_status}
-            currentMeetingLimitOverride={ws.monthly_meeting_limit_override}
+            currentMeetingLimitOverride={meetingLimitOverride}
             members={members}
           />
         </Card>

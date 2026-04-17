@@ -2,17 +2,23 @@ import { NextResponse } from "next/server";
 import { requireWorkspace } from "@/lib/supabase/auth";
 import { getUsageSummary } from "@/lib/meetings";
 import { PLANS } from "@/lib/billing/plans";
+import { getMeetingLimitOverride } from "@/lib/billing/meeting-limit-overrides";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function GET() {
   const auth = await requireWorkspace();
   if (auth.error) return auth.error;
   const { supabase, workspace } = auth;
 
+  const meetingLimitOverride = await getMeetingLimitOverride(
+    createAdminClient(),
+    workspace.id
+  );
   const usage = await getUsageSummary(
     supabase,
     workspace.id,
     workspace.plan,
-    workspace.monthly_meeting_limit_override
+    meetingLimitOverride
   );
   const plan = PLANS[workspace.plan] ?? PLANS.free;
 
@@ -66,7 +72,6 @@ export async function GET() {
       role: workspace.role,
       plan: workspace.plan,
       planName: plan.name,
-      monthly_meeting_limit_override: workspace.monthly_meeting_limit_override,
       subscription_status: workspace.subscription_status,
       subscription_renews_at: workspace.subscription_renews_at,
     },

@@ -61,7 +61,6 @@ export type Workspace = {
   name: string;
   owner_id: string;
   plan: WorkspacePlan;
-  monthly_meeting_limit_override: number | null;
   subscription_status: SubscriptionStatus;
   subscription_renews_at: string | null;
   subscription_started_at: string | null;
@@ -95,7 +94,6 @@ export type WorkspaceSummary = {
   role: WorkspaceRole;
   plan: WorkspacePlan;
   planName: string;
-  monthly_meeting_limit_override: number | null;
   subscription_status: SubscriptionStatus;
   subscription_renews_at: string | null;
 };
