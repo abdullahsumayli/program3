@@ -4,7 +4,8 @@ import { getPlan, type PlanId } from "@/lib/billing/plans";
 export async function getUsageSummary(
   supabase: SupabaseClient,
   workspaceId: string,
-  plan: PlanId | string | null | undefined
+  plan: PlanId | string | null | undefined,
+  monthlyMeetingLimitOverride?: number | null
 ) {
   const now = new Date();
   const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
@@ -20,6 +21,16 @@ export async function getUsageSummary(
   if (error) throw new Error(error.message);
 
   const planConfig = getPlan(plan);
+  const hasMeetingOverride =
+    typeof monthlyMeetingLimitOverride === "number" &&
+    Number.isFinite(monthlyMeetingLimitOverride);
+  const meetingsUnlimited =
+    planConfig.unlimited || monthlyMeetingLimitOverride === -1;
+  const meetingLimit =
+    hasMeetingOverride && monthlyMeetingLimitOverride !== -1
+      ? monthlyMeetingLimitOverride
+      : planConfig.monthlyMeetings;
+  const minutesUnlimited = planConfig.unlimited;
   const limitSeconds = planConfig.monthlyMinutes * 60;
   const usedSeconds = (data ?? []).reduce(
     (sum, meeting) => sum + (meeting.duration ?? 0),
@@ -30,17 +41,22 @@ export async function getUsageSummary(
 
   return {
     plan: planConfig.id,
-    limitMinutes: planConfig.unlimited ? -1 : planConfig.monthlyMinutes,
+    limitMinutes: minutesUnlimited ? -1 : planConfig.monthlyMinutes,
     usedMinutes: Math.ceil(usedSeconds / 60),
-    remainingMinutes: planConfig.unlimited
+    remainingMinutes: minutesUnlimited
       ? -1
       : Math.ceil(remainingSeconds / 60),
-    remainingSeconds: planConfig.unlimited ? 999999 : remainingSeconds,
-    limitMeetings: planConfig.unlimited ? -1 : planConfig.monthlyMeetings,
+    remainingSeconds: minutesUnlimited ? 999999 : remainingSeconds,
+    limitMeetings: meetingsUnlimited ? -1 : meetingLimit,
     usedMeetings: meetingCount,
-    remainingMeetings: planConfig.unlimited
+    remainingMeetings: meetingsUnlimited
       ? 999999
-      : Math.max(0, planConfig.monthlyMeetings - meetingCount),
+      : Math.max(0, meetingLimit - meetingCount),
     unlimited: planConfig.unlimited,
+    minutesUnlimited,
+    meetingsUnlimited,
+    monthlyMeetingLimitOverride: hasMeetingOverride
+      ? monthlyMeetingLimitOverride
+      : null,
   };
 }

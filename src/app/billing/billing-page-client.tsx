@@ -274,7 +274,7 @@ export function BillingPageClient() {
               <div className="text-2xl font-bold text-slate-900">
                 {usage.usedMeetings}
                 <span className="text-base font-normal text-slate-400">
-                  /{usage.unlimited ? "∞" : usage.limitMeetings}
+                  /{usage.meetingsUnlimited ? "∞" : usage.limitMeetings}
                 </span>
               </div>
               <div className="text-xs text-slate-500">
@@ -285,7 +285,7 @@ export function BillingPageClient() {
               <div className="text-2xl font-bold text-slate-900">
                 {usage.usedMinutes}
                 <span className="text-base font-normal text-slate-400">
-                  /{usage.unlimited ? "∞" : usage.limitMinutes}
+                  /{usage.minutesUnlimited ? "∞" : usage.limitMinutes}
                 </span>
               </div>
               <div className="text-xs text-slate-500">

@@ -8,7 +8,12 @@ export async function GET() {
   if (auth.error) return auth.error;
   const { supabase, workspace } = auth;
 
-  const usage = await getUsageSummary(supabase, workspace.id, workspace.plan);
+  const usage = await getUsageSummary(
+    supabase,
+    workspace.id,
+    workspace.plan,
+    workspace.monthly_meeting_limit_override
+  );
   const plan = PLANS[workspace.plan] ?? PLANS.free;
 
   const [
@@ -61,6 +66,7 @@ export async function GET() {
       role: workspace.role,
       plan: workspace.plan,
       planName: plan.name,
+      monthly_meeting_limit_override: workspace.monthly_meeting_limit_override,
       subscription_status: workspace.subscription_status,
       subscription_renews_at: workspace.subscription_renews_at,
     },

@@ -52,9 +52,14 @@ export async function enforceQuota(
     );
   }
 
-  const usage = await getUsageSummary(supabase, workspace.id, workspace.plan);
+  const usage = await getUsageSummary(
+    supabase,
+    workspace.id,
+    workspace.plan,
+    workspace.monthly_meeting_limit_override
+  );
 
-  if (usage.remainingMeetings <= 0) {
+  if (!usage.meetingsUnlimited && usage.remainingMeetings <= 0) {
     return NextResponse.json(
       {
         error: "meeting_limit_reached",
@@ -66,7 +71,7 @@ export async function enforceQuota(
     );
   }
 
-  if (usage.remainingSeconds <= 0) {
+  if (!usage.minutesUnlimited && usage.remainingSeconds <= 0) {
     return NextResponse.json(
       {
         error: "quota_exhausted",

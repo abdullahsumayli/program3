@@ -7,18 +7,30 @@ type Props = {
   workspaceId: string;
   currentPlan: string;
   currentStatus: string;
+  currentMeetingLimitOverride: number | null;
   members: Array<{ user_id: string; email: string; role: string }>;
 };
+
+type MeetingLimitMode = "plan" | "custom" | "unlimited";
 
 export default function WorkspaceActions({
   workspaceId,
   currentPlan,
   currentStatus,
+  currentMeetingLimitOverride,
   members,
 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [feedback, setFeedback] = useState<{ type: "ok" | "err"; msg: string } | null>(null);
+  const [meetingLimitMode, setMeetingLimitMode] = useState<MeetingLimitMode>(
+    getMeetingLimitMode(currentMeetingLimitOverride)
+  );
+  const [customMeetingLimit, setCustomMeetingLimit] = useState(
+    currentMeetingLimitOverride && currentMeetingLimitOverride > 0
+      ? String(currentMeetingLimitOverride)
+      : "10"
+  );
 
   async function doAction(body: Record<string, unknown>) {
     setFeedback(null);
@@ -53,6 +65,25 @@ export default function WorkspaceActions({
     await doAction({ action: "remove_member", user_id: userId });
   }
 
+  async function saveMeetingLimitOverride() {
+    let limit: number | null = null;
+
+    if (meetingLimitMode === "unlimited") {
+      limit = -1;
+    }
+
+    if (meetingLimitMode === "custom") {
+      const parsed = Number(customMeetingLimit);
+      if (!Number.isInteger(parsed) || parsed <= 0) {
+        setFeedback({ type: "err", msg: "أدخل حد اجتماعات صحيح أكبر من صفر" });
+        return;
+      }
+      limit = parsed;
+    }
+
+    await doAction({ action: "set_meeting_limit_override", limit });
+  }
+
   const roleLabel = (role: string) => {
     if (role === "owner") return "مالك";
     if (role === "admin") return "مدير";
@@ -76,42 +107,83 @@ export default function WorkspaceActions({
 
       {/* إدارة الاشتراك */}
       <Section title="إدارة الاشتراك">
-        <div className="flex flex-wrap gap-3">
-          <ActionButton
-            label="تغيير الباقة"
-            disabled={isPending}
-            onClick={() => {
-              const plans = ["free", "basic", "pro", "enterprise"];
-              const next = plans[(plans.indexOf(currentPlan) + 1) % plans.length];
-              doAction({ action: "change_plan", plan: next });
-            }}
-          />
-          <span className="self-center text-xs text-gray-500">الحالي: {currentPlan}</span>
-          {currentStatus !== "active" && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-3">
             <ActionButton
-              label="تفعيل"
-              tone="green"
+              label="تغيير الباقة"
               disabled={isPending}
-              onClick={() => doAction({ action: "change_status", status: "active" })}
+              onClick={() => {
+                const plans = ["free", "basic", "pro", "enterprise"];
+                const next = plans[(plans.indexOf(currentPlan) + 1) % plans.length];
+                doAction({ action: "change_plan", plan: next });
+              }}
             />
-          )}
-          {currentStatus === "active" && (
+            <span className="self-center text-xs text-gray-500">الحالي: {currentPlan}</span>
+            {currentStatus !== "active" && (
+              <ActionButton
+                label="تفعيل"
+                tone="green"
+                disabled={isPending}
+                onClick={() => doAction({ action: "change_status", status: "active" })}
+              />
+            )}
+            {currentStatus === "active" && (
+              <ActionButton
+                label="إيقاف"
+                tone="amber"
+                disabled={isPending}
+                onClick={() => doAction({ action: "change_status", status: "canceled" })}
+              />
+            )}
             <ActionButton
-              label="إيقاف"
-              tone="amber"
+              label="تمديد 30 يوم"
               disabled={isPending}
-              onClick={() => doAction({ action: "change_status", status: "canceled" })}
+              onClick={() => {
+                const d = new Date();
+                d.setDate(d.getDate() + 30);
+                doAction({ action: "extend_subscription", renews_at: d.toISOString() });
+              }}
             />
-          )}
-          <ActionButton
-            label="تمديد 30 يوم"
-            disabled={isPending}
-            onClick={() => {
-              const d = new Date();
-              d.setDate(d.getDate() + 30);
-              doAction({ action: "extend_subscription", renews_at: d.toISOString() });
-            }}
-          />
+          </div>
+
+          <div className="grid gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4 md:grid-cols-[minmax(180px,220px)_minmax(140px,180px)_auto] md:items-end">
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-gray-500">
+                حد الاجتماعات الشهري
+              </span>
+              <select
+                value={meetingLimitMode}
+                disabled={isPending}
+                onChange={(event) => setMeetingLimitMode(event.target.value as MeetingLimitMode)}
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 disabled:opacity-50"
+              >
+                <option value="plan">حسب الباقة</option>
+                <option value="custom">حد مخصص</option>
+                <option value="unlimited">مفتوح</option>
+              </select>
+            </label>
+
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-gray-500">
+                عدد الاجتماعات
+              </span>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={customMeetingLimit}
+                disabled={isPending || meetingLimitMode !== "custom"}
+                onChange={(event) => setCustomMeetingLimit(event.target.value)}
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 disabled:opacity-50"
+              />
+            </label>
+
+            <ActionButton
+              label="حفظ حد الاجتماعات"
+              disabled={isPending}
+              onClick={saveMeetingLimitOverride}
+            />
+          </div>
         </div>
       </Section>
 
@@ -197,6 +269,12 @@ export default function WorkspaceActions({
       </Section>
     </div>
   );
+}
+
+function getMeetingLimitMode(limit: number | null): MeetingLimitMode {
+  if (limit === -1) return "unlimited";
+  if (typeof limit === "number" && limit > 0) return "custom";
+  return "plan";
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

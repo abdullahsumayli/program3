@@ -83,8 +83,10 @@ export function CompanyDashboard() {
     );
   }
 
-  const minutesBlocked = !data.usage.unlimited && data.usage.remainingSeconds <= 0;
-  const meetingsBlocked = !data.usage.unlimited && data.usage.remainingMeetings <= 0;
+  const minutesBlocked =
+    !data.usage.minutesUnlimited && data.usage.remainingSeconds <= 0;
+  const meetingsBlocked =
+    !data.usage.meetingsUnlimited && data.usage.remainingMeetings <= 0;
   const subscriptionExpired = data.workspace.subscription_status === "expired" || data.workspace.subscription_status === "canceled";
   const quotaBlocked = minutesBlocked || meetingsBlocked || subscriptionExpired;
   const openTasks = data.tasks.filter((task) => task.status !== "completed");

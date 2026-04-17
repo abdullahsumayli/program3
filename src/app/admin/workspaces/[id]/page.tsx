@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Workspace, Meeting } from "@/lib/supabase/types";
+import { getPlan } from "@/lib/billing/plans";
 import WorkspaceActions from "./workspace-actions";
 
 export default async function WorkspaceDetailPage({
@@ -60,6 +61,15 @@ export default async function WorkspaceDetailPage({
 
   const totalMinutes = meetings.reduce((s, m) => s + Math.round((m.duration ?? 0) / 60), 0);
   const tasksCompleted = tasks.filter((t) => t.status === "completed").length;
+  const planConfig = getPlan(ws.plan);
+  const meetingLimitLabel =
+    ws.monthly_meeting_limit_override === -1
+      ? "مفتوح"
+      : ws.monthly_meeting_limit_override
+        ? `${ws.monthly_meeting_limit_override} شهرياً`
+        : planConfig.unlimited
+          ? "مفتوح حسب الباقة"
+          : `${planConfig.monthlyMeetings} حسب الباقة`;
 
   const statusLabel = (s: string) => {
     const labels: Record<string, string> = { active: "نشط", trial: "تجريبي", expired: "منتهي", canceled: "ملغي", past_due: "متأخر" };
@@ -101,6 +111,7 @@ export default async function WorkspaceDetailPage({
               label="تجديد الاشتراك"
               value={ws.subscription_renews_at ? new Date(ws.subscription_renews_at).toLocaleDateString("ar-SA") : "—"}
             />
+            <InfoField label="حد الاجتماعات الشهري" value={meetingLimitLabel} />
             <InfoField label="الأعضاء" value={String(members.length)} />
             <InfoField label="الاجتماعات" value={String(meetings.length)} />
             <InfoField label="المهام" value={`${tasksCompleted}/${tasks.length} مكتملة`} />
@@ -124,9 +135,11 @@ export default async function WorkspaceDetailPage({
         {/* تحكم الأدمن */}
         <Card title="تحكم الأدمن">
           <WorkspaceActions
+            key={`${ws.id}:${ws.monthly_meeting_limit_override ?? "plan"}`}
             workspaceId={ws.id}
             currentPlan={ws.plan}
             currentStatus={ws.subscription_status}
+            currentMeetingLimitOverride={ws.monthly_meeting_limit_override}
             members={members}
           />
         </Card>

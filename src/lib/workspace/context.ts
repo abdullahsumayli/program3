@@ -10,6 +10,7 @@ export type WorkspaceContext = {
   name: string;
   owner_id: string;
   plan: "free" | "basic" | "pro" | "enterprise";
+  monthly_meeting_limit_override: number | null;
   subscription_status: "active" | "trial" | "expired" | "canceled" | "past_due";
   subscription_renews_at: string | null;
   subscription_started_at: string | null;
@@ -33,7 +34,7 @@ export async function resolveActiveWorkspace(
 
   const { data: memberships } = await supabase
     .from("workspace_members")
-    .select("workspace_id, role, workspaces(id, name, owner_id, plan, subscription_status, subscription_renews_at, subscription_started_at)")
+    .select("workspace_id, role, workspaces(*)")
     .eq("user_id", userId);
 
   if (!memberships || memberships.length === 0) return null;
@@ -53,6 +54,7 @@ export async function resolveActiveWorkspace(
             name: string;
             owner_id: string;
             plan: "free" | "basic" | "pro" | "enterprise";
+            monthly_meeting_limit_override?: number | null;
             subscription_status: "active" | "trial" | "expired" | "canceled" | "past_due";
             subscription_renews_at: string | null;
             subscription_started_at: string | null;
@@ -68,6 +70,8 @@ export async function resolveActiveWorkspace(
         name: typed.workspaces.name,
         owner_id: typed.workspaces.owner_id,
         plan: typed.workspaces.plan,
+        monthly_meeting_limit_override:
+          typed.workspaces.monthly_meeting_limit_override ?? null,
         subscription_status: typed.workspaces.subscription_status,
         subscription_renews_at: typed.workspaces.subscription_renews_at,
         subscription_started_at: typed.workspaces.subscription_started_at,

@@ -75,10 +75,10 @@ export function BillingSettingsClient() {
     workspace.subscription_status === "expired" ||
     workspace.subscription_status === "canceled";
 
-  const minutesPct = usage.unlimited
+  const minutesPct = usage.minutesUnlimited
     ? 0
     : Math.min(100, Math.round((usage.usedMinutes / usage.limitMinutes) * 100));
-  const meetingsPct = usage.unlimited
+  const meetingsPct = usage.meetingsUnlimited
     ? 0
     : Math.min(
         100,
@@ -179,18 +179,18 @@ export function BillingSettingsClient() {
           <UsageBar
             label={t("billing.minutesThisMonth")}
             used={usage.usedMinutes}
-            limit={usage.unlimited ? -1 : usage.limitMinutes}
+            limit={usage.minutesUnlimited ? -1 : usage.limitMinutes}
             unit={t("billing.minutes")}
             pct={minutesPct}
-            unlimited={usage.unlimited}
+            unlimited={usage.minutesUnlimited}
           />
           <UsageBar
             label={t("billing.meetingsThisMonth")}
             used={usage.usedMeetings}
-            limit={usage.unlimited ? -1 : usage.limitMeetings}
+            limit={usage.meetingsUnlimited ? -1 : usage.limitMeetings}
             unit={t("dashboard.meetings")}
             pct={meetingsPct}
-            unlimited={usage.unlimited}
+            unlimited={usage.meetingsUnlimited}
           />
         </div>
       </section>

@@ -46,6 +46,35 @@ export async function PATCH(
       return NextResponse.json({ ok: true });
     }
 
+    case "set_meeting_limit_override": {
+      const { limit } = body;
+      let monthlyMeetingLimitOverride: number | null = null;
+
+      if (limit !== null) {
+        if (
+          typeof limit !== "number" ||
+          !Number.isInteger(limit) ||
+          (limit !== -1 && limit <= 0)
+        ) {
+          return NextResponse.json(
+            { error: "Limit must be null, -1, or a positive integer" },
+            { status: 400 }
+          );
+        }
+        monthlyMeetingLimitOverride = limit;
+      }
+
+      const { error } = await db
+        .from("workspaces")
+        .update({
+          monthly_meeting_limit_override: monthlyMeetingLimitOverride,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ ok: true });
+    }
+
     case "extend_subscription": {
       const { renews_at } = body as { renews_at: string };
       if (!renews_at) {
