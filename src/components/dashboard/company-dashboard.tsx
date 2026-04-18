@@ -28,13 +28,27 @@ export function CompanyDashboard() {
   const [uploadTitle, setUploadTitle] = useState("");
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [showUpload, setShowUpload] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const loadDashboard = async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const response = await fetch("/api/dashboard", { cache: "no-store" });
+      if (response.status === 401) {
+        window.location.href = "/login?next=/";
+        return;
+      }
       const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Dashboard failed to load");
+      }
       setData(payload);
+    } catch (error) {
+      setData(null);
+      setLoadError(
+        error instanceof Error ? error.message : "Dashboard failed to load"
+      );
     } finally {
       setLoading(false);
     }
@@ -75,10 +89,34 @@ export function CompanyDashboard() {
     await loadDashboard();
   };
 
-  if (loading || !data) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center py-24 text-slate-400">
         <Loader2 size={24} className="animate-spin" />
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="mx-auto max-w-xl px-4 py-16">
+        <div className="rounded-2xl border border-red-200 bg-white p-6 text-center shadow-sm">
+          <CircleAlert className="mx-auto h-8 w-8 text-red-500" />
+          <h1 className="mt-3 text-lg font-semibold text-slate-900">
+            تعذر تحميل لوحة التحكم
+          </h1>
+          <p className="mt-2 text-sm text-slate-500">
+            {loadError ?? "حدث خطأ غير متوقع أثناء تحميل بيانات الحساب."}
+          </p>
+          <Button
+            type="button"
+            onClick={() => void loadDashboard()}
+            className="mt-5 justify-center"
+          >
+            <Loader2 size={14} className="hidden" />
+            إعادة المحاولة
+          </Button>
+        </div>
       </div>
     );
   }

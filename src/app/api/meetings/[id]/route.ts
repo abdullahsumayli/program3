@@ -34,6 +34,9 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/meetings/[
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (body.title !== undefined) updates.title = body.title;
   if (body.notes !== undefined) updates.notes = body.notes;
+  if (body.audio_url !== undefined) updates.audio_url = body.audio_url;
+  if (body.processing_status !== undefined) updates.processing_status = body.processing_status;
+  if (body.processing_error !== undefined) updates.processing_error = body.processing_error;
 
   const { data, error } = await supabase
     .from("meetings")

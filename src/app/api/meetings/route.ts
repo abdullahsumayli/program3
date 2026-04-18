@@ -32,6 +32,10 @@ export async function POST(request: Request) {
   const sourceType = allowedSources.includes(body.source_type as string)
     ? (body.source_type as string)
     : "live_recording";
+  const allowedStatuses = ["processing", "completed", "error"];
+  const processingStatus = allowedStatuses.includes(body.processing_status as string)
+    ? (body.processing_status as string)
+    : "completed";
 
   const { data, error } = await supabase
     .from("meetings")
@@ -44,7 +48,7 @@ export async function POST(request: Request) {
       duration: typeof body.duration === "number" ? body.duration : 0,
       audio_url: typeof body.audio_url === "string" ? body.audio_url : null,
       source_type: sourceType,
-      processing_status: "processing",
+      processing_status: processingStatus,
       processing_error: null,
     })
     .select()

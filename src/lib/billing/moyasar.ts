@@ -1,13 +1,15 @@
+import { getAppSecret } from "@/lib/app-secrets";
+
 const MOYASAR_BASE = "https://api.moyasar.com/v1";
 
-function requireEnv(name: string): string {
-  const value = process.env[name];
+async function requireSecret(name: "MOYASAR_SECRET_KEY" | "MOYASAR_PUBLISHABLE_KEY"): Promise<string> {
+  const value = await getAppSecret(name);
   if (!value) throw new Error(`${name} is not configured`);
   return value;
 }
 
-export function getPublishableKey(): string {
-  return requireEnv("MOYASAR_PUBLISHABLE_KEY");
+export async function getPublishableKey(): Promise<string> {
+  return requireSecret("MOYASAR_PUBLISHABLE_KEY");
 }
 
 type CreatePaymentInput = {
@@ -18,7 +20,7 @@ type CreatePaymentInput = {
 };
 
 export async function createPayment(input: CreatePaymentInput) {
-  const secret = requireEnv("MOYASAR_SECRET_KEY");
+  const secret = await requireSecret("MOYASAR_SECRET_KEY");
 
   const res = await fetch(`${MOYASAR_BASE}/payments`, {
     method: "POST",
@@ -43,7 +45,7 @@ export async function createPayment(input: CreatePaymentInput) {
 }
 
 export async function getPayment(paymentId: string) {
-  const secret = requireEnv("MOYASAR_SECRET_KEY");
+  const secret = await requireSecret("MOYASAR_SECRET_KEY");
 
   const res = await fetch(`${MOYASAR_BASE}/payments/${paymentId}`, {
     headers: {
@@ -66,7 +68,7 @@ export async function verifyWebhookSignature(
   rawBody: string,
   receivedSignature: string | null
 ): Promise<boolean> {
-  const secret = process.env.MOYASAR_WEBHOOK_SECRET;
+  const secret = await getAppSecret("MOYASAR_WEBHOOK_SECRET");
   if (!secret || !receivedSignature) return false;
 
   const encoder = new TextEncoder();

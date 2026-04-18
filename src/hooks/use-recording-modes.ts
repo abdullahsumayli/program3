@@ -355,6 +355,7 @@ export function useRecordingModes(options?: {
 
         const finalizeAudio = () => {
           const blob = audioChunksRef.current.length ? new Blob(audioChunksRef.current, { type: "audio/webm" }) : null;
+          setState("idle");
           resolve({ transcript, segments, duration: finalDuration, audioBlob: blob });
         };
 

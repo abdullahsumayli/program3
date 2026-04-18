@@ -1,3 +1,5 @@
+import { getAppSecrets } from "@/lib/app-secrets";
+
 type SendEmailInput = {
   to: string | string[];
   subject: string;
@@ -10,8 +12,9 @@ type SendEmailInput = {
  * so dev environments don't break when email isn't configured.
  */
 export async function sendEmail(input: SendEmailInput): Promise<{ id?: string; skipped?: boolean }> {
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.RESEND_FROM_EMAIL;
+  const secrets = await getAppSecrets(["RESEND_API_KEY", "RESEND_FROM_EMAIL"]);
+  const apiKey = secrets.RESEND_API_KEY;
+  const from = secrets.RESEND_FROM_EMAIL;
 
   if (!apiKey || !from) {
     console.warn("[email] RESEND_API_KEY or RESEND_FROM_EMAIL missing; skipping send", { subject: input.subject });

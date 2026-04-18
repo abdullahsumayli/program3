@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getAppSecret } from "@/lib/app-secrets";
 import { requireWorkspace } from "@/lib/supabase/auth";
 import { buildTranscriptSegmentsFromTokens, processMeetingArtifacts } from "@/lib/meeting-processing";
 import { enforceQuota } from "@/lib/billing/enforce";
@@ -39,7 +40,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid file type. Only audio and video files are accepted." }, { status: 415 });
   }
 
-  const apiKey = process.env.SONIOX_API_KEY;
+  const apiKey = await getAppSecret("SONIOX_API_KEY");
   if (!apiKey) {
     return NextResponse.json({ error: "SONIOX_API_KEY missing" }, { status: 500 });
   }

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getAppSecret } from "@/lib/app-secrets";
 import { requireWorkspace } from "@/lib/supabase/auth";
 import { enforceQuota } from "@/lib/billing/enforce";
 
@@ -15,7 +16,7 @@ export async function POST() {
   const blocked = await enforceQuota(supabase, workspace);
   if (blocked) return blocked;
 
-  const apiKey = process.env.SONIOX_API_KEY;
+  const apiKey = await getAppSecret("SONIOX_API_KEY");
   if (!apiKey) {
     return NextResponse.json({ error: "SONIOX_API_KEY missing" }, { status: 500 });
   }

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/admin";
+import { isAdminEmail } from "@/lib/admin";
+import { getAppSecrets } from "@/lib/app-secrets";
+import { requireUser } from "@/lib/supabase/auth";
 
 type ServiceHealth = {
   configured: boolean;
@@ -7,21 +9,36 @@ type ServiceHealth = {
   label: string;
 };
 
-export async function GET() {
-  const auth = await requireAdmin();
+export async function GET(request: Request) {
+  const auth = await requireUser();
   if (auth.error) return auth.error;
 
-  const [soniox, openrouter, supabaseStatus, moyasar, resend] =
-    await Promise.all([
-      checkSoniox(),
-      checkOpenRouter(),
-      checkSupabase(),
-      checkMoyasar(),
-      checkResend(),
-    ]);
+  const url = new URL(request.url);
+  const includeAdminServices = url.searchParams.get("scope") === "admin";
+
+  if (includeAdminServices && !isAdminEmail(auth.user.email)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const secrets = await getAppSecrets();
+
+  const [soniox, openrouter, supabaseStatus] = await Promise.all([
+    checkSoniox(secrets.SONIOX_API_KEY),
+    checkOpenRouter(secrets.OPENROUTER_API_KEY),
+    checkSupabase(),
+  ]);
 
   const coreConnected =
     soniox.connected && openrouter.connected && supabaseStatus.connected;
+
+  const adminServices = includeAdminServices
+    ? await Promise.all([
+        checkMoyasar(secrets.MOYASAR_SECRET_KEY, secrets.MOYASAR_PUBLISHABLE_KEY),
+        checkResend(secrets.RESEND_API_KEY),
+      ]).then(
+        ([moyasar, resend]) => ({ moyasar, resend })
+      )
+    : {};
 
   return NextResponse.json({
     ok: coreConnected,
@@ -29,14 +46,12 @@ export async function GET() {
       supabase: supabaseStatus,
       soniox,
       openrouter,
-      moyasar,
-      resend,
+      ...adminServices,
     },
   });
 }
 
-async function checkSoniox(): Promise<ServiceHealth> {
-  const key = process.env.SONIOX_API_KEY;
+async function checkSoniox(key: string | null | undefined): Promise<ServiceHealth> {
   if (!key) {
     return { configured: false, connected: false, label: "Missing API key" };
   }
@@ -69,8 +84,7 @@ async function checkSoniox(): Promise<ServiceHealth> {
   }
 }
 
-async function checkOpenRouter(): Promise<ServiceHealth> {
-  const key = process.env.OPENROUTER_API_KEY;
+async function checkOpenRouter(key: string | null | undefined): Promise<ServiceHealth> {
   if (!key) {
     return { configured: false, connected: false, label: "Missing API key" };
   }
@@ -114,9 +128,10 @@ async function checkSupabase(): Promise<ServiceHealth> {
   }
 }
 
-async function checkMoyasar(): Promise<ServiceHealth> {
-  const secret = process.env.MOYASAR_SECRET_KEY;
-  const publishable = process.env.MOYASAR_PUBLISHABLE_KEY;
+async function checkMoyasar(
+  secret: string | null | undefined,
+  publishable: string | null | undefined
+): Promise<ServiceHealth> {
   if (!secret || !publishable) {
     return {
       configured: false,
@@ -144,8 +159,7 @@ async function checkMoyasar(): Promise<ServiceHealth> {
   }
 }
 
-async function checkResend(): Promise<ServiceHealth> {
-  const key = process.env.RESEND_API_KEY;
+async function checkResend(key: string | null | undefined): Promise<ServiceHealth> {
   if (!key) {
     return { configured: false, connected: false, label: "Missing API key" };
   }

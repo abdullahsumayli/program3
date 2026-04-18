@@ -1,17 +1,25 @@
-﻿import OpenAI from "openai";
+import OpenAI from "openai";
+import { getAppSecret } from "@/lib/app-secrets";
 
 let client: OpenAI | null = null;
+let clientKey: string | null = null;
 
-function getClient() {
-  if (!client) {
+async function getClient() {
+  const apiKey = await getAppSecret("OPENROUTER_API_KEY");
+  if (!apiKey) {
+    throw new Error("OPENROUTER_API_KEY is not configured");
+  }
+
+  if (!client || clientKey !== apiKey) {
     client = new OpenAI({
-      apiKey: process.env.OPENROUTER_API_KEY,
+      apiKey,
       baseURL: "https://openrouter.ai/api/v1",
       defaultHeaders: {
         "HTTP-Referer": "https://meetings.local",
         "X-Title": "Meeting OS",
       },
     });
+    clientKey = apiKey;
   }
 
   return client;
@@ -78,7 +86,8 @@ export async function generateMeetingArtifacts(
     ? `${BASE_SYSTEM_PROMPT}\n\nAdditional instructions:\n${customInstructions.trim()}`
     : BASE_SYSTEM_PROMPT;
 
-  const completion = await getClient().chat.completions.create({
+  const openrouter = await getClient();
+  const completion = await openrouter.chat.completions.create({
     model: MODEL,
     max_tokens: 4096,
     messages: [
@@ -102,9 +111,10 @@ export async function generateMeetingArtifacts(
 async function compressTranscript(transcript: string, customInstructions?: string) {
   const chunks = chunkText(transcript, MAX_INPUT_CHARS);
   const partials: string[] = [];
+  const openrouter = await getClient();
 
   for (const chunk of chunks) {
-    const completion = await getClient().chat.completions.create({
+    const completion = await openrouter.chat.completions.create({
       model: MODEL,
       max_tokens: 1400,
       messages: [
