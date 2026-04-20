@@ -8,6 +8,7 @@ type Props = {
   currentPlan: string;
   currentStatus: string;
   currentMeetingLimitOverride: number | null;
+  currentFreeMinuteGrant: number;
   members: Array<{ user_id: string; email: string; role: string }>;
 };
 
@@ -18,6 +19,7 @@ export default function WorkspaceActions({
   currentPlan,
   currentStatus,
   currentMeetingLimitOverride,
+  currentFreeMinuteGrant,
   members,
 }: Props) {
   const router = useRouter();
@@ -31,6 +33,7 @@ export default function WorkspaceActions({
       ? String(currentMeetingLimitOverride)
       : "10"
   );
+  const [freeMinutesToAdd, setFreeMinutesToAdd] = useState("60");
 
   async function doAction(body: Record<string, unknown>) {
     setFeedback(null);
@@ -82,6 +85,20 @@ export default function WorkspaceActions({
     }
 
     await doAction({ action: "set_meeting_limit_override", limit });
+  }
+
+  async function addFreeMinutes(minutesValue = freeMinutesToAdd) {
+    const minutes = Number(minutesValue);
+    if (!Number.isInteger(minutes) || minutes <= 0) {
+      setFeedback({ type: "err", msg: "أدخل عدد دقائق صحيح أكبر من صفر" });
+      return;
+    }
+
+    if (!confirm(`إضافة ${minutes} دقيقة وتفعيلها الآن لهذه الخطة المجانية؟`)) {
+      return;
+    }
+
+    await doAction({ action: "add_minutes", minutes });
   }
 
   const roleLabel = (role: string) => {
@@ -187,28 +204,50 @@ export default function WorkspaceActions({
         </div>
       </Section>
 
-      {/* التحكم بالاستهلاك */}
-      <Section title="التحكم بالاستهلاك">
-        <div className="flex flex-wrap gap-3">
-          <ActionButton
-            label="تصفير الاستخدام"
-            tone="amber"
-            disabled={isPending}
-            onClick={() => {
-              if (!confirm("هل تريد تصفير كل الاستخدام؟")) return;
-              doAction({ action: "reset_usage" });
-            }}
-          />
-          <ActionButton
-            label="إضافة 60 دقيقة"
-            disabled={isPending}
-            onClick={() => doAction({ action: "add_minutes", minutes: 60 })}
-          />
-          <ActionButton
-            label="إضافة 300 دقيقة"
-            disabled={isPending}
-            onClick={() => doAction({ action: "add_minutes", minutes: 300 })}
-          />
+      {/* رصيد الخطة المجانية */}
+      <Section title="رصيد الخطة المجانية">
+        <div className="space-y-4">
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
+            الرصيد الإضافي لهذا الشهر:{" "}
+            <span className="font-semibold text-gray-900">{currentFreeMinuteGrant} دقيقة</span>
+          </div>
+          <div className="grid gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4 md:grid-cols-[minmax(140px,180px)_auto_auto_auto] md:items-end">
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-gray-500">
+                دقائق إضافية
+              </span>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={freeMinutesToAdd}
+                disabled={isPending || currentPlan !== "free"}
+                onChange={(event) => setFreeMinutesToAdd(event.target.value)}
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 disabled:opacity-50"
+              />
+            </label>
+            <ActionButton
+              label="حفظ وإضافة الدقائق"
+              tone="green"
+              disabled={isPending || currentPlan !== "free"}
+              onClick={() => addFreeMinutes()}
+            />
+            <ActionButton
+              label="+60 دقيقة"
+              disabled={isPending || currentPlan !== "free"}
+              onClick={() => addFreeMinutes("60")}
+            />
+            <ActionButton
+              label="+300 دقيقة"
+              disabled={isPending || currentPlan !== "free"}
+              onClick={() => addFreeMinutes("300")}
+            />
+          </div>
+          {currentPlan !== "free" && (
+            <p className="text-xs text-gray-500">
+              إضافة الدقائق مفعلة فقط للشركات على الخطة المجانية.
+            </p>
+          )}
         </div>
       </Section>
 

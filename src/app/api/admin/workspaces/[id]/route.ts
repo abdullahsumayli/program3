@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { setMeetingLimitOverride } from "@/lib/billing/meeting-limit-overrides";
+import { addMonthlyFreeMinuteGrant } from "@/lib/billing/minute-grants";
 
 export async function PATCH(
   request: Request,
@@ -106,27 +107,43 @@ export async function PATCH(
 
     case "add_minutes": {
       const { minutes } = body as { minutes: number };
-      if (!minutes || minutes <= 0) {
+      if (!Number.isInteger(minutes) || minutes <= 0) {
         return NextResponse.json({ error: "Invalid minutes" }, { status: 400 });
       }
-      const { data: existing } = await db
-        .from("usage_counters")
-        .select("seconds_used")
-        .eq("workspace_id", id)
-        .single();
 
-      const currentUsed = existing?.seconds_used ?? 0;
-      const newUsed = Math.max(0, currentUsed - minutes * 60);
+      const { data: workspace, error: workspaceError } = await db
+        .from("workspaces")
+        .select("plan")
+        .eq("id", id)
+        .maybeSingle();
 
-      const { error } = await db
-        .from("usage_counters")
-        .upsert({
-          workspace_id: id,
-          seconds_used: newUsed,
-          period_start: existing ? undefined : new Date().toISOString().slice(0, 10),
-          updated_at: new Date().toISOString(),
-        });
+      if (workspaceError) {
+        return NextResponse.json({ error: workspaceError.message }, { status: 500 });
+      }
+      if (!workspace) {
+        return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+      }
+      if (workspace.plan !== "free") {
+        return NextResponse.json(
+          { error: "Extra minute grants are available for free workspaces only" },
+          { status: 400 }
+        );
+      }
+
+      const { error } = await addMonthlyFreeMinuteGrant(db, id, minutes);
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+      const { error: activationError } = await db
+        .from("workspaces")
+        .update({
+          subscription_status: "active",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id);
+      if (activationError) {
+        return NextResponse.json({ error: activationError.message }, { status: 500 });
+      }
+
       return NextResponse.json({ ok: true });
     }
 

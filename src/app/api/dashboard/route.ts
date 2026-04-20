@@ -3,6 +3,7 @@ import { requireWorkspace } from "@/lib/supabase/auth";
 import { getUsageSummary } from "@/lib/meetings";
 import { PLANS } from "@/lib/billing/plans";
 import { getMeetingLimitOverride } from "@/lib/billing/meeting-limit-overrides";
+import { getMonthlyFreeMinuteGrant } from "@/lib/billing/minute-grants";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function GET() {
@@ -10,15 +11,19 @@ export async function GET() {
   if (auth.error) return auth.error;
   const { supabase, workspace } = auth;
 
-  const meetingLimitOverride = await getMeetingLimitOverride(
-    createAdminClient(),
-    workspace.id
-  );
+  const admin = createAdminClient();
+  const [meetingLimitOverride, freeMinuteGrant] = await Promise.all([
+    getMeetingLimitOverride(admin, workspace.id),
+    workspace.plan === "free"
+      ? getMonthlyFreeMinuteGrant(admin, workspace.id)
+      : Promise.resolve(0),
+  ]);
   const usage = await getUsageSummary(
     supabase,
     workspace.id,
     workspace.plan,
-    meetingLimitOverride
+    meetingLimitOverride,
+    freeMinuteGrant
   );
   const plan = PLANS[workspace.plan] ?? PLANS.free;
 

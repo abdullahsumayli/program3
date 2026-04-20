@@ -107,10 +107,14 @@ export type Settings = {
 
 export type UsageSummary = {
   plan: WorkspacePlan;
+  baseLimitMinutes: number;
   limitMinutes: number;
   usedMinutes: number;
   remainingMinutes: number;
   remainingSeconds: number;
+  monthlyExtraMinutes: number;
+  monthlyExtraMinutesUsed: number;
+  monthlyExtraMinutesRemaining: number;
   limitMeetings: number;
   usedMeetings: number;
   remainingMeetings: number;

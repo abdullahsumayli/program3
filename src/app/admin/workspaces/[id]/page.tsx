@@ -2,8 +2,10 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Workspace, Meeting } from "@/lib/supabase/types";
+import { getUsageSummary } from "@/lib/meetings";
 import { getPlan } from "@/lib/billing/plans";
 import { getMeetingLimitOverride } from "@/lib/billing/meeting-limit-overrides";
+import { getMonthlyFreeMinuteGrant } from "@/lib/billing/minute-grants";
 import WorkspaceActions from "./workspace-actions";
 
 export default async function WorkspaceDetailPage({
@@ -23,15 +25,23 @@ export default async function WorkspaceDetailPage({
   if (!wsData) notFound();
   const ws = wsData as Workspace;
 
-  const [membersRes, meetingsRes, tasksRes, usageRes, sessionsRes, usersRes, meetingLimitOverride] =
+  const [
+    membersRes,
+    meetingsRes,
+    tasksRes,
+    sessionsRes,
+    usersRes,
+    meetingLimitOverride,
+    freeMinuteGrant,
+  ] =
     await Promise.all([
       db.from("workspace_members").select("*").eq("workspace_id", id),
       db.from("meetings").select("id, title, duration, source_type, processing_status, created_at").eq("workspace_id", id).order("created_at", { ascending: false }).limit(50),
       db.from("meeting_tasks").select("id, status").eq("workspace_id", id),
-      db.from("usage_counters").select("*").eq("workspace_id", id).maybeSingle(),
       db.from("recording_sessions").select("id, user_email, status, recording_mode, duration_seconds, started_at").eq("workspace_id", id).order("started_at", { ascending: false }).limit(20),
       db.auth.admin.listUsers({ perPage: 1000 }),
       getMeetingLimitOverride(db, id),
+      ws.plan === "free" ? getMonthlyFreeMinuteGrant(db, id) : Promise.resolve(0),
     ]);
 
   const emailMap = new Map(
@@ -51,7 +61,6 @@ export default async function WorkspaceDetailPage({
   >[];
 
   const tasks = (tasksRes.data ?? []) as Array<{ id: string; status: string }>;
-  const usage = usageRes.data as { seconds_used: number; period_start: string } | null;
   const sessions = (sessionsRes.data ?? []) as Array<{
     id: string;
     user_email: string | null;
@@ -61,9 +70,15 @@ export default async function WorkspaceDetailPage({
     started_at: string;
   }>;
 
-  const totalMinutes = meetings.reduce((s, m) => s + Math.round((m.duration ?? 0) / 60), 0);
   const tasksCompleted = tasks.filter((t) => t.status === "completed").length;
   const planConfig = getPlan(ws.plan);
+  const usageSummary = await getUsageSummary(
+    db,
+    id,
+    ws.plan,
+    meetingLimitOverride,
+    freeMinuteGrant
+  );
   const meetingLimitLabel =
     meetingLimitOverride === -1
       ? "مفتوح"
@@ -114,6 +129,14 @@ export default async function WorkspaceDetailPage({
               value={ws.subscription_renews_at ? new Date(ws.subscription_renews_at).toLocaleDateString("ar-SA") : "—"}
             />
             <InfoField label="حد الاجتماعات الشهري" value={meetingLimitLabel} />
+            <InfoField
+              label="حد الدقائق الشهري"
+              value={
+                usageSummary.minutesUnlimited
+                  ? "مفتوح"
+                  : `${usageSummary.limitMinutes} دقيقة`
+              }
+            />
             <InfoField label="الأعضاء" value={String(members.length)} />
             <InfoField label="الاجتماعات" value={String(meetings.length)} />
             <InfoField label="المهام" value={`${tasksCompleted}/${tasks.length} مكتملة`} />
@@ -122,13 +145,32 @@ export default async function WorkspaceDetailPage({
 
         {/* الاستهلاك */}
         <Card title="الاستهلاك">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <UsageStat label="إجمالي الاجتماعات" value={meetings.length} />
-            <UsageStat label="إجمالي الدقائق" value={totalMinutes} />
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <UsageStat label="اجتماعات هذا الشهر" value={usageSummary.usedMeetings} />
             <UsageStat label="إجمالي المهام" value={tasks.length} />
             <UsageStat
-              label="المستخدم هذه الفترة"
-              value={usage ? Math.round(usage.seconds_used / 60) : 0}
+              label="الدقائق المستهلكة"
+              value={usageSummary.usedMinutes}
+              suffix="دقيقة"
+            />
+            <UsageStat
+              label="الدقائق غير المستهلكة"
+              value={usageSummary.minutesUnlimited ? "∞" : usageSummary.remainingMinutes}
+              suffix="دقيقة"
+            />
+            <UsageStat
+              label="رصيد الدقائق الإضافية"
+              value={usageSummary.monthlyExtraMinutes}
+              suffix="دقيقة"
+            />
+            <UsageStat
+              label="المستهلك من الرصيد الإضافي"
+              value={usageSummary.monthlyExtraMinutesUsed}
+              suffix="دقيقة"
+            />
+            <UsageStat
+              label="المتبقي من الرصيد الإضافي"
+              value={usageSummary.monthlyExtraMinutesRemaining}
               suffix="دقيقة"
             />
           </div>
@@ -137,11 +179,12 @@ export default async function WorkspaceDetailPage({
         {/* تحكم الأدمن */}
         <Card title="تحكم الأدمن">
           <WorkspaceActions
-            key={`${ws.id}:${meetingLimitOverride ?? "plan"}`}
+            key={`${ws.id}:${meetingLimitOverride ?? "plan"}:${freeMinuteGrant}`}
             workspaceId={ws.id}
             currentPlan={ws.plan}
             currentStatus={ws.subscription_status}
             currentMeetingLimitOverride={meetingLimitOverride}
+            currentFreeMinuteGrant={freeMinuteGrant}
             members={members}
           />
         </Card>
@@ -280,7 +323,7 @@ function UsageStat({
   suffix,
 }: {
   label: string;
-  value: number;
+  value: number | string;
   suffix?: string;
 }) {
   return (

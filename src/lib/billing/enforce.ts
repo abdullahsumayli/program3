@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getUsageSummary } from "@/lib/meetings";
 import { getMeetingLimitOverride } from "@/lib/billing/meeting-limit-overrides";
+import { getMonthlyFreeMinuteGrant } from "@/lib/billing/minute-grants";
 import { isPaidPlan } from "@/lib/billing/plans";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { WorkspaceContext } from "@/lib/workspace/context";
@@ -54,15 +55,19 @@ export async function enforceQuota(
     );
   }
 
-  const meetingLimitOverride = await getMeetingLimitOverride(
-    createAdminClient(),
-    workspace.id
-  );
+  const admin = createAdminClient();
+  const [meetingLimitOverride, freeMinuteGrant] = await Promise.all([
+    getMeetingLimitOverride(admin, workspace.id),
+    workspace.plan === "free"
+      ? getMonthlyFreeMinuteGrant(admin, workspace.id)
+      : Promise.resolve(0),
+  ]);
   const usage = await getUsageSummary(
     supabase,
     workspace.id,
     workspace.plan,
-    meetingLimitOverride
+    meetingLimitOverride,
+    freeMinuteGrant
   );
 
   if (!usage.meetingsUnlimited && usage.remainingMeetings <= 0) {
