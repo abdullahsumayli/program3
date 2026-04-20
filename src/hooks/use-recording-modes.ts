@@ -8,7 +8,7 @@ import type {
   Recording,
 } from "@soniox/client";
 
-type RecordingState = "idle" | "starting" | "recording" | "stopping" | "error";
+type RecordingState = "idle" | "starting" | "recording" | "paused" | "stopping" | "error";
 export type RecordingMode = "remote-share" | "mic-only";
 type RecordingErrorStatus =
   | "api_error"
@@ -105,7 +105,8 @@ export function useRecordingModes(options?: {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const startTimeRef = useRef<number>(0);
+  const activeStartedAtRef = useRef<number | null>(null);
+  const accumulatedElapsedRef = useRef(0);
   const systemStreamRef = useRef<MediaStream | null>(null);
   const combinedStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -137,6 +138,19 @@ export function useRecordingModes(options?: {
     setSystemAudioActive(false);
     systemAudioActiveRef.current = false;
   }, []);
+
+  const getCurrentElapsed = useCallback(() => {
+    const activeStartedAt = activeStartedAtRef.current;
+    if (activeStartedAt === null) return accumulatedElapsedRef.current;
+    return accumulatedElapsedRef.current + Math.floor((Date.now() - activeStartedAt) / 1000);
+  }, []);
+
+  const startElapsedTimer = useCallback(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      setElapsed(getCurrentElapsed());
+    }, 500);
+  }, [getCurrentElapsed]);
 
   const spawnSonioxSession = useCallback((attemptId: number) => {
     const combined = combinedStreamRef.current;
@@ -181,10 +195,8 @@ export function useRecordingModes(options?: {
       options?.onDiagnosticsEvent?.({ type: "session_started", systemAudioActive: systemAudioActiveRef.current });
       if (!hasStartedSessionRef.current) {
         hasStartedSessionRef.current = true;
-        startTimeRef.current = Date.now();
-        timerRef.current = setInterval(() => {
-          setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
-        }, 500);
+        activeStartedAtRef.current = Date.now();
+        startElapsedTimer();
       }
     });
 
@@ -234,7 +246,7 @@ export function useRecordingModes(options?: {
         setError(err.message);
       }
     });
-  }, [options]);
+  }, [options, startElapsedTimer]);
 
   const startRecording = useCallback(async (mode: RecordingMode) => {
     const attemptId = ++startAttemptRef.current;
@@ -247,6 +259,8 @@ export function useRecordingModes(options?: {
     setSystemAudioActive(false);
     systemAudioActiveRef.current = false;
     audioChunksRef.current = [];
+    accumulatedElapsedRef.current = 0;
+    activeStartedAtRef.current = null;
     finalTokensRef.current = [];
     nonFinalTokensRef.current = [];
     isStoppingRef.current = false;
@@ -330,6 +344,37 @@ export function useRecordingModes(options?: {
     setState("idle");
   }, [cleanupActiveResources]);
 
+  const pauseRecording = useCallback(() => {
+    if (state !== "recording") return elapsed;
+
+    const pausedElapsed = getCurrentElapsed();
+    accumulatedElapsedRef.current = pausedElapsed;
+    activeStartedAtRef.current = null;
+    setElapsed(pausedElapsed);
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+
+    recordingRef.current?.finalize({ trailing_silence_ms: 250 });
+    recordingRef.current?.pause();
+    if (saveRecorderRef.current?.state === "recording") {
+      saveRecorderRef.current.pause();
+    }
+    setState("paused");
+    return pausedElapsed;
+  }, [elapsed, getCurrentElapsed, state]);
+
+  const resumeRecording = useCallback(() => {
+    if (state !== "paused") return elapsed;
+
+    recordingRef.current?.resume();
+    if (saveRecorderRef.current?.state === "paused") {
+      saveRecorderRef.current.resume();
+    }
+    activeStartedAtRef.current = Date.now();
+    startElapsedTimer();
+    setState("recording");
+    return accumulatedElapsedRef.current;
+  }, [elapsed, startElapsedTimer, state]);
+
   const stopRecording = useCallback((): Promise<{
     transcript: string;
     segments: SpeakerSegment[];
@@ -339,9 +384,11 @@ export function useRecordingModes(options?: {
     return new Promise((resolve) => {
       isStoppingRef.current = true;
       setState("stopping");
+      accumulatedElapsedRef.current = getCurrentElapsed();
+      activeStartedAtRef.current = null;
       if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
       if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; }
-      const finalDuration = Math.floor((Date.now() - startTimeRef.current) / 1000);
+      const finalDuration = accumulatedElapsedRef.current;
 
       const finish = () => {
         const allTokens = [...finalTokensRef.current, ...nonFinalTokensRef.current];
@@ -384,7 +431,7 @@ export function useRecordingModes(options?: {
         finish();
       }
     });
-  }, []);
+  }, [getCurrentElapsed]);
 
   useEffect(() => {
     return () => {
@@ -395,7 +442,7 @@ export function useRecordingModes(options?: {
   }, [cleanupActiveResources]);
 
   useEffect(() => {
-    if (state !== "recording") return;
+    if (state !== "recording" && state !== "paused") return;
     const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
@@ -403,7 +450,7 @@ export function useRecordingModes(options?: {
 
   return {
     state, finalTokens, nonFinalTokens, error, elapsed, audioBlob, systemAudioActive,
-    startRecording, cancelStart, stopRecording,
+    startRecording, cancelStart, pauseRecording, resumeRecording, stopRecording,
   };
 }
 

@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { CheckCircle2, Headphones, Laptop2, Loader2, Mic, Save, Sparkles, Square } from "lucide-react";
+import { CheckCircle2, Headphones, Laptop2, Loader2, Mic, Pause, Play, Save, Sparkles, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LiveTranscript } from "./live-transcript";
 import { MicTest } from "./mic-test";
@@ -114,7 +114,7 @@ export function RecordingSession({ onFinished }: { onFinished: () => void }) {
   }, []);
 
   useEffect(() => {
-    if (recording.state !== "recording") return;
+    if (recording.state !== "recording" && recording.state !== "paused") return;
 
     const transcript = getTranscriptText([
       ...recording.finalTokens,
@@ -139,7 +139,7 @@ export function RecordingSession({ onFinished }: { onFinished: () => void }) {
   }, [recording.elapsed, recording.systemAudioActive]);
 
   useEffect(() => {
-    if (!recordingSessionId || recording.state !== "recording") return;
+    if (!recordingSessionId || (recording.state !== "recording" && recording.state !== "paused")) return;
 
     const heartbeat = () => {
       void updateRecordingSession({
@@ -238,6 +238,26 @@ export function RecordingSession({ onFinished }: { onFinished: () => void }) {
     } finally {
       setBusyAction(null);
     }
+  };
+
+  const handlePause = async () => {
+    const duration = recording.pauseRecording();
+    await updateRecordingSession({
+      status: "recording",
+      duration_seconds: duration,
+      last_heartbeat_at: new Date().toISOString(),
+    });
+  };
+
+  const handleResume = async () => {
+    const duration = recording.resumeRecording();
+    await updateRecordingSession({
+      status: "recording",
+      duration_seconds: duration,
+      last_heartbeat_at: new Date().toISOString(),
+      last_error_status: null,
+      last_error_message: null,
+    });
   };
 
   const uploadAudioInBackground = useCallback(
@@ -358,6 +378,7 @@ export function RecordingSession({ onFinished }: { onFinished: () => void }) {
 
   const isIdle = recording.state === "idle";
   const isRecording = recording.state === "recording";
+  const isPaused = recording.state === "paused";
   const isStarting = recording.state === "starting";
   const isStopping = recording.state === "stopping" || busyAction === "stopping";
   const hasCaptured = capturedRecording !== null;
@@ -367,11 +388,13 @@ export function RecordingSession({ onFinished }: { onFinished: () => void }) {
     <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          {isRecording && (
+          {(isRecording || isPaused) && (
             <>
               <div className="flex items-center gap-2">
-                <div className="h-3 w-3 animate-pulse rounded-full bg-red-500" />
-                <span className="text-sm font-medium text-slate-900">{t("recording.recording")}</span>
+                <div className={`h-3 w-3 rounded-full ${isPaused ? "bg-amber-500" : "animate-pulse bg-red-500"}`} />
+                <span className="text-sm font-medium text-slate-900">
+                  {isPaused ? t("recording.paused") : t("recording.recording")}
+                </span>
               </div>
               <span className="font-mono text-sm text-slate-600">{formatDuration(recording.elapsed)}</span>
             </>
@@ -389,7 +412,18 @@ export function RecordingSession({ onFinished }: { onFinished: () => void }) {
 
         <div className="flex flex-wrap gap-2">
           {isIdle && !hasCaptured && <Button onClick={handleStart} size="lg"><Mic size={18} />{t("recording.startMeeting")}</Button>}
-          {isRecording && <Button onClick={handleStop} variant="danger" size="lg"><Square size={16} />{t("recording.stop")}</Button>}
+          {isRecording && (
+            <>
+              <Button onClick={() => void handlePause()} variant="outline" size="lg"><Pause size={16} />{t("recording.pause")}</Button>
+              <Button onClick={handleStop} variant="danger" size="lg"><Square size={16} />{t("recording.stop")}</Button>
+            </>
+          )}
+          {isPaused && (
+            <>
+              <Button onClick={() => void handleResume()} size="lg"><Play size={16} />{t("recording.resume")}</Button>
+              <Button onClick={handleStop} variant="danger" size="lg"><Square size={16} />{t("recording.stop")}</Button>
+            </>
+          )}
           {hasCaptured && (
             <>
               <Button
@@ -440,6 +474,12 @@ export function RecordingSession({ onFinished }: { onFinished: () => void }) {
         </div>
       )}
 
+      {isPaused && (
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          {t("recording.pausedHelp")}
+        </div>
+      )}
+
       {isIdle && !hasCaptured && (
         <div className="mb-5 grid gap-3 md:grid-cols-2">
           <RecordingModeCard icon={<Laptop2 size={18} />} title={t("recording.remoteTitle")} description={t("recording.remoteDescription")} detail={t("recording.remoteDetail")} selected={selectedMode === "remote-share"} onSelect={() => setSelectedMode("remote-share")} />
@@ -450,13 +490,13 @@ export function RecordingSession({ onFinished }: { onFinished: () => void }) {
       {recording.error && <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{recording.error}</div>}
       {postStopError && <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{postStopError}</div>}
 
-      {isRecording && (
+      {(isRecording || isPaused) && (
         <div className={`mb-4 rounded-lg border p-3 text-sm ${recording.systemAudioActive ? "border-green-200 bg-green-50 text-green-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>
           {recording.systemAudioActive ? t("recording.systemAudioOn") : t("recording.systemAudioOff")}
         </div>
       )}
 
-      {(isRecording || recording.finalTokens.length > 0) ? (
+      {(isRecording || isPaused || recording.finalTokens.length > 0) ? (
         <LiveTranscript finalTokens={recording.finalTokens} nonFinalTokens={recording.nonFinalTokens} />
       ) : capturedRecording ? (
         <TranscriptPreview transcript={capturedRecording.transcript} />
