@@ -40,15 +40,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invite expired" }, { status: 400 });
   }
 
-  const { error: memberError } = await admin
+  const { data: existing } = await admin
     .from("workspace_members")
-    .upsert(
-      { workspace_id: invite.workspace_id, user_id: user.id, role: invite.role },
-      { onConflict: "workspace_id,user_id" }
-    );
+    .select("user_id")
+    .eq("workspace_id", invite.workspace_id)
+    .eq("user_id", user.id)
+    .maybeSingle();
 
-  if (memberError) {
-    return NextResponse.json({ error: memberError.message }, { status: 500 });
+  if (!existing) {
+    const { error: memberError } = await admin
+      .from("workspace_members")
+      .insert({ workspace_id: invite.workspace_id, user_id: user.id, role: invite.role });
+
+    if (memberError) {
+      return NextResponse.json({ error: memberError.message }, { status: 500 });
+    }
   }
 
   const workspaceId = invite.workspace_id as string;
