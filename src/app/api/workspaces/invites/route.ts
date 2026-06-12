@@ -8,13 +8,6 @@ function generateToken(): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-// WhatsApp share links use the international number with digits only (no "+").
-function normalizePhone(raw: unknown): string | null {
-  if (typeof raw !== "string") return null;
-  const digits = raw.replace(/[^0-9]/g, "");
-  return digits.length >= 6 ? digits : null;
-}
-
 function getBaseUrl(request: Request): string {
   const envUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
   if (envUrl) return envUrl;
@@ -32,7 +25,7 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from("workspace_invites")
-    .select("id, email, phone, role, token, expires_at, accepted_at, created_at")
+    .select("id, email, role, token, expires_at, accepted_at, created_at")
     .eq("workspace_id", workspace.id)
     .order("created_at", { ascending: false });
 
@@ -55,7 +48,6 @@ export async function POST(request: Request) {
   const cleanRole = ["admin", "member"].includes(body.role as string) ? (body.role as string) : "member";
   const cleanEmail =
     typeof body.email === "string" && body.email.includes("@") ? body.email.trim().toLowerCase() : null;
-  const cleanPhone = normalizePhone(body.phone);
 
   const plan = PLANS[workspace.plan];
   const { count, error: countError } = await supabase
@@ -72,20 +64,22 @@ export async function POST(request: Request) {
   }
 
   const token = generateToken();
-  const expires_at = new Date(Date.now() + 1000 * 60 * 60 * 24 * 7).toISOString();
+  // Open reusable link: long-lived so the team can keep using one link.
+  const expires_at = new Date(Date.now() + 1000 * 60 * 60 * 24 * 365).toISOString();
 
+  // email is a non-null sentinel for open links (the DB column is NOT NULL on
+  // the live schema, and acceptance is link-based so the value is unused).
   const { data: invite, error } = await supabase
     .from("workspace_invites")
     .insert({
       workspace_id: workspace.id,
-      email: cleanEmail,
-      phone: cleanPhone,
+      email: cleanEmail ?? "open-link",
       role: cleanRole,
       token,
       invited_by: user.id,
       expires_at,
     })
-    .select("id, token, phone")
+    .select("id, token")
     .single();
 
   if (error || !invite) return NextResponse.json({ error: error?.message ?? "Failed" }, { status: 500 });
@@ -95,7 +89,6 @@ export async function POST(request: Request) {
   return NextResponse.json({
     id: invite.id,
     token: invite.token,
-    phone: invite.phone,
     acceptUrl,
   });
 }
