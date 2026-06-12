@@ -1,13 +1,28 @@
 import { NextResponse } from "next/server";
 import { requireWorkspace } from "@/lib/supabase/auth";
 import { PLANS } from "@/lib/billing/plans";
-import { sendEmail } from "@/lib/email/client";
-import { workspaceInviteEmail } from "@/lib/email/templates";
 
 function generateToken(): string {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+// WhatsApp share links use the international number with digits only (no "+").
+function normalizePhone(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const digits = raw.replace(/[^0-9]/g, "");
+  return digits.length >= 6 ? digits : null;
+}
+
+function getBaseUrl(request: Request): string {
+  const envUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
+  if (envUrl) return envUrl;
+  const origin = request.headers.get("origin");
+  if (origin) return origin;
+  const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
+  const proto = request.headers.get("x-forwarded-proto") ?? "https";
+  return host ? `${proto}://${host}` : "";
 }
 
 export async function GET() {
@@ -17,7 +32,7 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from("workspace_invites")
-    .select("id, email, role, expires_at, accepted_at, created_at")
+    .select("id, email, phone, role, token, expires_at, accepted_at, created_at")
     .eq("workspace_id", workspace.id)
     .order("created_at", { ascending: false });
 
@@ -36,11 +51,11 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
-  const cleanEmail = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+
   const cleanRole = ["admin", "member"].includes(body.role as string) ? (body.role as string) : "member";
-  if (!cleanEmail || !cleanEmail.includes("@")) {
-    return NextResponse.json({ error: "valid email required" }, { status: 400 });
-  }
+  const cleanEmail =
+    typeof body.email === "string" && body.email.includes("@") ? body.email.trim().toLowerCase() : null;
+  const cleanPhone = normalizePhone(body.phone);
 
   const plan = PLANS[workspace.plan];
   const { count, error: countError } = await supabase
@@ -64,31 +79,25 @@ export async function POST(request: Request) {
     .insert({
       workspace_id: workspace.id,
       email: cleanEmail,
+      phone: cleanPhone,
       role: cleanRole,
       token,
       invited_by: user.id,
       expires_at,
     })
-    .select()
+    .select("id, token, phone")
     .single();
 
   if (error || !invite) return NextResponse.json({ error: error?.message ?? "Failed" }, { status: 500 });
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
-  const acceptUrl = `${appUrl}/invite/${token}`;
-  const { subject, html } = workspaceInviteEmail({
-    workspaceName: workspace.name,
-    inviterName: user.email ?? "A teammate",
+  const acceptUrl = `${getBaseUrl(request)}/invite/${token}`;
+
+  return NextResponse.json({
+    id: invite.id,
+    token: invite.token,
+    phone: invite.phone,
     acceptUrl,
   });
-
-  try {
-    await sendEmail({ to: cleanEmail, subject, html });
-  } catch (err) {
-    console.error("[invite] email send failed", err);
-  }
-
-  return NextResponse.json({ id: invite.id });
 }
 
 export async function DELETE(request: Request) {

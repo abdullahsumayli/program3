@@ -37,7 +37,14 @@
       "roleLabel": "الدور",
       "inviteButton": "إرسال دعوة",
       "pendingInvites": "الدعوات المعلقة",
-      "expiresOn": "تنتهي {date}"
+      "expiresOn": "تنتهي {date}",
+      "whatsappLabel": "رقم واتساب (اختياري)",
+      "whatsappHint": "أدخل رمز الدولة، مثال: 9665XXXXXXXX. اتركه فارغاً لاختيار جهة الاتصال داخل واتساب.",
+      "sendWhatsapp": "إرسال عبر واتساب",
+      "resend": "إعادة الإرسال",
+      "copyLink": "نسخ الرابط",
+      "linkCopied": "تم نسخ رابط الدعوة",
+      "inviteMessage": "أنت مدعو للانضمام إلى {workspace} على Meeting OS. افتح هذا الرابط وسجّل الدخول للانضمام إلى الفريق: {url}"
     },
     "notifications": {
       "title": "الإشعارات",
@@ -100,6 +107,7 @@
     "manage": "إدارة مساحة العمل",
     "settings": {
       "manageBilling": "إدارة الفوترة ←",
+      "manageTeam": "إدارة الفريق والدعوات ←",
       "members": "الأعضاء ({count})",
       "inviteTitle": "دعوة زميل",
       "emailLabel": "البريد الإلكتروني",
@@ -223,6 +231,11 @@
     "decisions": "القرارات",
     "tasks": "المهام",
     "regenerate": "إعادة التوليد",
+    "exportPdf": "تصدير PDF",
+    "exportedOn": "تم التصدير في",
+    "noKeyPoints": "لا توجد نقاط رئيسية.",
+    "noDecisions": "لا توجد قرارات مسجلة.",
+    "noTasks": "لا توجد مهام مسجلة.",
     "saving": "جارٍ الحفظ...",
     "noSummary": "لم يتم إنشاء ملخص بعد.",
     "owner": "المسؤول",

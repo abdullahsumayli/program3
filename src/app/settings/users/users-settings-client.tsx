@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { Loader2, Trash2, UserPlus, X } from "lucide-react";
+import { Check, Copy, Loader2, MessageCircle, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { WorkspaceInvite, WorkspaceMember, WorkspaceSummary } from "@/lib/supabase/types";
 import { useLanguage } from "@/lib/i18n/context";
 
 type Member = Pick<WorkspaceMember, "user_id" | "role" | "created_at">;
-type Invite = Pick<WorkspaceInvite, "id" | "email" | "role" | "expires_at" | "accepted_at">;
+type Invite = Pick<WorkspaceInvite, "id" | "email" | "phone" | "role" | "token" | "expires_at" | "accepted_at">;
 
 export function UsersSettingsClient() {
   const { t } = useLanguage();
@@ -17,9 +17,10 @@ export function UsersSettingsClient() {
   const [invites, setInvites] = useState<Invite[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [inviteEmail, setInviteEmail] = useState("");
+  const [invitePhone, setInvitePhone] = useState("");
   const [inviteRole, setInviteRole] = useState<"admin" | "member">("member");
   const [sending, setSending] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -45,25 +46,55 @@ export function UsersSettingsClient() {
     void load();
   }, []);
 
+  const acceptUrlFor = (token: string) =>
+    typeof window !== "undefined" ? `${window.location.origin}/invite/${token}` : `/invite/${token}`;
+
+  const whatsappUrl = (phone: string | null, token: string) => {
+    const message = t("settings.users.inviteMessage", {
+      workspace: workspace?.name ?? "",
+      url: acceptUrlFor(token),
+    });
+    const target = phone ? phone : "";
+    return `https://wa.me/${target}?text=${encodeURIComponent(message)}`;
+  };
+
   const sendInvite = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!inviteEmail.trim()) return;
     setSending(true);
     setError(null);
+    // Open a tab synchronously so the popup is tied to the user gesture; we set
+    // its destination once the invite is created.
+    const pending = window.open("", "_blank");
     try {
       const res = await fetch("/api/workspaces/invites", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: inviteEmail.trim(), role: inviteRole }),
+        body: JSON.stringify({ phone: invitePhone.trim() || undefined, role: inviteRole }),
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.message ?? body.error ?? "Failed");
-      setInviteEmail("");
+
+      const waUrl = whatsappUrl(body.phone ?? null, body.token);
+      if (pending) pending.location.href = waUrl;
+      else window.open(waUrl, "_blank");
+
+      setInvitePhone("");
       await load();
     } catch (err) {
+      if (pending) pending.close();
       setError(err instanceof Error ? err.message : "Failed");
     } finally {
       setSending(false);
+    }
+  };
+
+  const copyLink = async (invite: Invite) => {
+    try {
+      await navigator.clipboard.writeText(acceptUrlFor(invite.token));
+      setCopiedId(invite.id);
+      setTimeout(() => setCopiedId((current) => (current === invite.id ? null : current)), 2000);
+    } catch {
+      /* clipboard unavailable */
     }
   };
 
@@ -96,6 +127,7 @@ export function UsersSettingsClient() {
 
   const isOwner = workspace.role === "owner";
   const canManage = workspace.role === "owner" || workspace.role === "admin";
+  const pendingInvites = invites.filter((i) => !i.accepted_at);
 
   return (
     <div className="space-y-6">
@@ -149,14 +181,14 @@ export function UsersSettingsClient() {
           <form onSubmit={sendInvite} className="mt-4 flex flex-wrap items-end gap-3">
             <div className="min-w-[220px] flex-1">
               <label className="mb-1.5 block text-xs font-medium text-slate-500">
-                {t("settings.users.emailLabel")}
+                {t("settings.users.whatsappLabel")}
               </label>
               <Input
-                type="email"
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
-                placeholder="teammate@company.com"
-                required
+                type="tel"
+                inputMode="tel"
+                value={invitePhone}
+                onChange={(e) => setInvitePhone(e.target.value)}
+                placeholder="9665XXXXXXXX"
               />
             </div>
             <div>
@@ -172,33 +204,48 @@ export function UsersSettingsClient() {
                 <option value="admin">Admin</option>
               </select>
             </div>
-            <Button type="submit" disabled={sending}>
-              {sending ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}
-              {t("settings.users.inviteButton")}
+            <Button type="submit" disabled={sending} className="bg-[#25D366] text-white hover:bg-[#1ebe5d]">
+              {sending ? <Loader2 size={14} className="animate-spin" /> : <MessageCircle size={14} />}
+              {t("settings.users.sendWhatsapp")}
             </Button>
           </form>
+          <p className="mt-2 text-xs text-slate-400">{t("settings.users.whatsappHint")}</p>
 
-          {invites.filter((i) => !i.accepted_at).length > 0 && (
+          {pendingInvites.length > 0 && (
             <div className="mt-6">
               <h3 className="text-sm font-medium text-slate-700">{t("settings.users.pendingInvites")}</h3>
               <ul className="mt-2 divide-y divide-slate-100">
-                {invites
-                  .filter((i) => !i.accepted_at)
-                  .map((invite) => (
-                    <li key={invite.id} className="flex items-center justify-between py-2.5">
-                      <div>
-                        <div className="text-sm font-medium text-slate-900">{invite.email}</div>
-                        <div className="text-xs text-slate-500">
-                          {invite.role} · {t("settings.users.expiresOn", {
-                            date: new Date(invite.expires_at).toLocaleDateString(),
-                          })}
-                        </div>
+                {pendingInvites.map((invite) => (
+                  <li key={invite.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
+                    <div>
+                      <div className="text-sm font-medium text-slate-900">
+                        {invite.phone ? `+${invite.phone}` : invite.email ?? t("settings.users.inviteTitle")}
                       </div>
+                      <div className="text-xs text-slate-500">
+                        {invite.role} · {t("settings.users.expiresOn", {
+                          date: new Date(invite.expires_at).toLocaleDateString(),
+                        })}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <a
+                        href={whatsappUrl(invite.phone, invite.token)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-[#25D366] px-2.5 py-1.5 text-xs font-medium text-white hover:bg-[#1ebe5d]"
+                      >
+                        <MessageCircle size={13} />
+                        {t("settings.users.resend")}
+                      </a>
+                      <Button variant="ghost" size="sm" onClick={() => copyLink(invite)}>
+                        {copiedId === invite.id ? <Check size={14} /> : <Copy size={14} />}
+                      </Button>
                       <Button variant="ghost" size="sm" onClick={() => revokeInvite(invite.id)}>
                         <X size={14} />
                       </Button>
-                    </li>
-                  ))}
+                    </div>
+                  </li>
+                ))}
               </ul>
             </div>
           )}

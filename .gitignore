@@ -37,6 +37,9 @@ yarn-error.log*
 .vercel
 supabase/.temp/
 
+# local Claude Code settings/memory
+.claude/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

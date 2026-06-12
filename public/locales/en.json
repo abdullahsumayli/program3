@@ -37,7 +37,14 @@
       "roleLabel": "Role",
       "inviteButton": "Send invite",
       "pendingInvites": "Pending invites",
-      "expiresOn": "Expires {date}"
+      "expiresOn": "Expires {date}",
+      "whatsappLabel": "WhatsApp number (optional)",
+      "whatsappHint": "Include country code, e.g. 9665XXXXXXXX. Leave empty to pick a contact in WhatsApp.",
+      "sendWhatsapp": "Send via WhatsApp",
+      "resend": "Resend",
+      "copyLink": "Copy link",
+      "linkCopied": "Invite link copied",
+      "inviteMessage": "You're invited to join {workspace} on Meeting OS. Open this link and sign in to join the team: {url}"
     },
     "notifications": {
       "title": "Notifications",
@@ -100,6 +107,7 @@
     "manage": "Manage workspace",
     "settings": {
       "manageBilling": "Manage billing →",
+      "manageTeam": "Manage team & invites →",
       "members": "Members ({count})",
       "inviteTitle": "Invite a teammate",
       "emailLabel": "Email",
@@ -223,6 +231,11 @@
     "decisions": "Decisions",
     "tasks": "Tasks",
     "regenerate": "Regenerate",
+    "exportPdf": "Export PDF",
+    "exportedOn": "Exported on",
+    "noKeyPoints": "No key points.",
+    "noDecisions": "No decisions recorded.",
+    "noTasks": "No tasks recorded.",
     "saving": "Saving...",
     "noSummary": "No summary generated yet.",
     "owner": "Owner",

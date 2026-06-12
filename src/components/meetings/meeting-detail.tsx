@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
-import { Loader2, RefreshCw } from "lucide-react";
+import { FileDown, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useLanguage } from "@/lib/i18n/context";
@@ -54,7 +54,8 @@ export function MeetingDetail({ meeting: initialMeeting, decisions: initialDecis
   };
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8">
+    <>
+    <div className="mx-auto max-w-6xl px-4 py-8 print-hidden">
       <Link href="/" className="text-sm text-slate-500 hover:text-slate-900">{t("meeting.back")}</Link>
       <div className="mt-4 grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
         <div className="space-y-6">
@@ -64,10 +65,16 @@ export function MeetingDetail({ meeting: initialMeeting, decisions: initialDecis
                 <h1 className="text-3xl font-semibold text-slate-900">{meeting.title || t("common.untitledMeeting")}</h1>
                 <div className="mt-2 text-sm text-slate-500">{new Date(meeting.created_at).toLocaleString(locale === "ar" ? "ar-SA" : "en-US")} · {Math.ceil((meeting.duration ?? 0) / 60)} min</div>
               </div>
-              <Button variant="outline" onClick={regenerate} disabled={regenerating}>
-                {regenerating ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-                {t("meeting.regenerate")}
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" onClick={() => window.print()}>
+                  <FileDown size={16} />
+                  {t("meeting.exportPdf")}
+                </Button>
+                <Button variant="outline" onClick={regenerate} disabled={regenerating}>
+                  {regenerating ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+                  {t("meeting.regenerate")}
+                </Button>
+              </div>
             </div>
             {meeting.audio_url && <audio controls src={meeting.audio_url} className="mt-4 w-full" />}
           </div>
@@ -105,6 +112,98 @@ export function MeetingDetail({ meeting: initialMeeting, decisions: initialDecis
         </div>
       </div>
     </div>
+    <MeetingPrintView meeting={meeting} decisions={decisions} tasks={tasks} />
+    </>
+  );
+}
+
+function MeetingPrintView({ meeting, decisions, tasks }: { meeting: Meeting; decisions: MeetingDecision[]; tasks: MeetingTask[] }) {
+  const { t, locale } = useLanguage();
+  const dateStr = new Date(meeting.created_at).toLocaleString(locale === "ar" ? "ar-SA" : "en-US");
+  const statusLabel = (status: TaskStatus) => (status === "completed" ? t("common.completed") : t("common.inProgress"));
+  const keyPoints = meeting.key_points ?? [];
+
+  return (
+    <div className="hidden print-only px-2 leading-7 text-slate-900" dir={locale === "ar" ? "rtl" : "ltr"}>
+      <header className="mb-6 border-b border-slate-300 pb-4">
+        <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Meeting OS</div>
+        <h1 className="mt-1 text-2xl font-semibold">{meeting.title || t("common.untitledMeeting")}</h1>
+        <div className="mt-1 text-sm text-slate-500">
+          {dateStr} · {Math.ceil((meeting.duration ?? 0) / 60)} min
+        </div>
+      </header>
+
+      <PrintSection title={t("meeting.summary")}>
+        <p className="whitespace-pre-wrap text-sm">{meeting.summary || t("meeting.noSummary")}</p>
+      </PrintSection>
+
+      <PrintSection title={t("meeting.keyPoints")}>
+        {keyPoints.length ? (
+          <ul className="list-disc space-y-1 ps-5 text-sm">
+            {keyPoints.map((point, index) => (
+              <li key={index}>{point}</li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-slate-500">{t("meeting.noKeyPoints")}</p>
+        )}
+      </PrintSection>
+
+      <PrintSection title={t("meeting.decisions")}>
+        {decisions.length ? (
+          <ul className="list-disc space-y-1 ps-5 text-sm">
+            {decisions.map((decision) => (
+              <li key={decision.id}>{decision.content}</li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-slate-500">{t("meeting.noDecisions")}</p>
+        )}
+      </PrintSection>
+
+      <PrintSection title={t("meeting.tasks")}>
+        {tasks.length ? (
+          <div className="space-y-2 text-sm">
+            {tasks.map((task) => (
+              <div key={task.id} className="break-inside-avoid border-b border-slate-200 pb-2">
+                <div className="font-medium">{task.description}</div>
+                <div className="mt-0.5 text-xs text-slate-500">
+                  {t("meeting.owner")}: {task.owner_name || t("common.unassigned")}
+                  {task.due_date ? ` · ${t("meeting.dueDate")}: ${task.due_date}` : ""}
+                  {` · ${t("meeting.status")}: ${statusLabel(task.status)}`}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-slate-500">{t("meeting.noTasks")}</p>
+        )}
+      </PrintSection>
+
+      <PrintSection title={t("meeting.transcript")}>
+        {meeting.transcript_segments?.length ? (
+          <div className="space-y-2 text-sm">
+            {meeting.transcript_segments.map((segment, index) => (
+              <div key={index} className="break-inside-avoid">
+                <span className="font-semibold text-slate-600">{segment.speaker_name || t("recording.speaker", { id: segment.speaker_id })}: </span>
+                <span>{segment.text}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="whitespace-pre-wrap text-sm">{meeting.transcript}</p>
+        )}
+      </PrintSection>
+    </div>
+  );
+}
+
+function PrintSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="mb-5">
+      <h2 className="mb-2 text-base font-semibold text-slate-900">{title}</h2>
+      {children}
+    </section>
   );
 }
 

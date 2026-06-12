@@ -79,7 +79,8 @@ export type WorkspaceMember = {
 export type WorkspaceInvite = {
   id: string;
   workspace_id: string;
-  email: string;
+  email: string | null;
+  phone: string | null;
   role: WorkspaceRole;
   token: string;
   invited_by: string | null;
