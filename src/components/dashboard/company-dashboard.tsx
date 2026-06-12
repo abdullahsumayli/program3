@@ -6,6 +6,8 @@ import {
   ArrowUpRight,
   CalendarDays,
   CheckCircle2,
+  ChevronDown,
+  Circle,
   CircleAlert,
   ClipboardList,
   Loader2,
@@ -132,8 +134,8 @@ export function CompanyDashboard() {
   const completedTasks = data.tasks.filter((task) => task.status === "completed");
   const completionRate = data.tasks.length === 0 ? 0 : Math.round((completedTasks.length / data.tasks.length) * 100);
   const latestTasks = [...data.tasks].sort(sortByExecutionPriority).slice(0, 8);
-  const latestDecisions = data.decisions.slice(0, 6);
-  const latestMeetings = data.meetings.slice(0, 6);
+  const latestDecisions = data.decisions.slice(0, 5);
+  const latestMeetings = data.meetings.slice(0, 5);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 sm:py-8">
@@ -278,88 +280,84 @@ export function CompanyDashboard() {
         />
       </section>
 
-      {/* Tasks */}
-      <section className="mb-8">
-        <SectionPanel
-          title={t("dashboard.tasks")}
-          badge={`${openTasks.length} ${t("dashboard.openLabel")}`}
-        >
-          {latestTasks.length === 0 ? (
-            <EmptyState label={t("dashboard.noTasks")} />
-          ) : (
-            <div className="space-y-3">
-              {latestTasks.map((task) => (
-                <TaskCard key={task.id} task={task} onSave={updateTask} />
-              ))}
-            </div>
-          )}
-        </SectionPanel>
-      </section>
+      {/* Main grid: tasks (primary) + decisions & meetings (side) */}
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* Tasks */}
+        <section className="lg:col-span-2">
+          <SectionPanel
+            title={t("dashboard.tasks")}
+            badge={`${openTasks.length} ${t("dashboard.openLabel")}`}
+          >
+            {latestTasks.length === 0 ? (
+              <EmptyState label={t("dashboard.noTasks")} />
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {latestTasks.map((task) => (
+                  <TaskCard key={task.id} task={task} onSave={updateTask} />
+                ))}
+              </div>
+            )}
+          </SectionPanel>
+        </section>
 
-      {/* Decisions */}
-      <section className="mb-8">
-        <SectionPanel title={t("dashboard.decisions")}>
-          {latestDecisions.length === 0 ? (
-            <EmptyState label={t("dashboard.noDecisions")} />
-          ) : (
-            <div className="space-y-3">
-              {latestDecisions.map((decision) => (
-                <div
-                  key={decision.id}
-                  className="rounded-lg border border-slate-100 p-4"
-                >
-                  <div className="text-sm font-medium text-slate-900">
-                    {decision.content}
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
-                    <span className="rounded-full bg-slate-50 px-2.5 py-0.5">
-                      {decision.meeting_title || t("common.untitledMeeting")}
-                    </span>
-                    {decision.meeting_created_at && (
-                      <span className="rounded-full bg-slate-50 px-2.5 py-0.5">
-                        {formatDate(decision.meeting_created_at, locale)}
+        {/* Side column: decisions + meetings */}
+        <div className="space-y-6">
+          <SectionPanel title={t("dashboard.decisions")}>
+            {latestDecisions.length === 0 ? (
+              <EmptyState label={t("dashboard.noDecisions")} />
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {latestDecisions.map((decision) => (
+                  <div key={decision.id} className="py-3 first:pt-0 last:pb-0">
+                    <div className="text-sm text-slate-800">{decision.content}</div>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5 text-xs text-slate-400">
+                      <span className="truncate">
+                        {decision.meeting_title || t("common.untitledMeeting")}
                       </span>
-                    )}
+                      {decision.meeting_created_at && (
+                        <span>· {formatDate(decision.meeting_created_at, locale)}</span>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </SectionPanel>
-      </section>
+                ))}
+              </div>
+            )}
+          </SectionPanel>
 
-      {/* Meetings */}
-      <section className="mb-8">
-        <SectionPanel title={t("dashboard.meetings")}>
-          {latestMeetings.length === 0 ? (
-            <EmptyState label={t("dashboard.noMeetings")} />
-          ) : (
-            <div className="space-y-3">
-              {latestMeetings.map((meeting) => (
-                <Link
-                  key={meeting.id}
-                  href={`/meetings/${meeting.id}`}
-                  className="flex items-center justify-between rounded-lg border border-slate-100 p-4 transition-colors hover:bg-slate-50"
-                >
-                  <div>
-                    <div className="text-sm font-medium text-slate-900">
-                      {meeting.title || t("common.untitledMeeting")}
+          <SectionPanel title={t("dashboard.meetings")}>
+            {latestMeetings.length === 0 ? (
+              <EmptyState label={t("dashboard.noMeetings")} />
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {latestMeetings.map((meeting) => (
+                  <Link
+                    key={meeting.id}
+                    href={`/meetings/${meeting.id}`}
+                    className="group flex items-center justify-between gap-2 py-3 first:pt-0 last:pb-0"
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium text-slate-900 group-hover:text-slate-700">
+                        {meeting.title || t("common.untitledMeeting")}
+                      </div>
+                      <div className="mt-0.5 text-xs text-slate-400">
+                        {formatDate(meeting.created_at, locale)}
+                        {" · "}
+                        {t("dashboard.minutes", {
+                          count: Math.ceil((meeting.duration ?? 0) / 60),
+                        })}
+                      </div>
                     </div>
-                    <div className="mt-1 text-xs text-slate-500">
-                      {formatDate(meeting.created_at, locale)}
-                      {" · "}
-                      {t("dashboard.minutes", {
-                        count: Math.ceil((meeting.duration ?? 0) / 60),
-                      })}
-                    </div>
-                  </div>
-                  <ArrowUpRight size={16} className="text-slate-400" />
-                </Link>
-              ))}
-            </div>
-          )}
-        </SectionPanel>
-      </section>
+                    <ArrowUpRight
+                      size={15}
+                      className="shrink-0 text-slate-300 group-hover:text-slate-500"
+                    />
+                  </Link>
+                ))}
+              </div>
+            )}
+          </SectionPanel>
+        </div>
+      </div>
     </div>
   );
 }
@@ -435,7 +433,7 @@ function SectionPanel({
 
 function EmptyState({ label }: { label: string }) {
   return (
-    <div className="rounded-lg border border-dashed border-slate-200 px-4 py-10 text-center text-sm text-slate-400">
+    <div className="rounded-lg border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-400">
       {label}
     </div>
   );
@@ -453,7 +451,10 @@ function TaskCard({
   const [dueDate, setDueDate] = useState(task.due_date ?? "");
   const [status, setStatus] = useState<TaskStatus>(task.status);
   const [saving, setSaving] = useState(false);
+  const [toggling, setToggling] = useState(false);
+  const [open, setOpen] = useState(false);
   const visualStatus = getVisualTaskStatus(task, status, dueDate);
+  const done = status === "completed";
 
   const save = async () => {
     setSaving(true);
@@ -463,81 +464,118 @@ function TaskCard({
         due_date: dueDate || null,
         status,
       });
+      setOpen(false);
     } finally {
       setSaving(false);
     }
   };
 
+  const toggleComplete = async () => {
+    const next: TaskStatus = done ? "in_progress" : "completed";
+    setStatus(next);
+    setToggling(true);
+    try {
+      await onSave(task.id, { status: next });
+    } finally {
+      setToggling(false);
+    }
+  };
+
   return (
-    <div className="rounded-lg border border-slate-100 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="max-w-2xl">
-          <div className="text-sm font-medium text-slate-900">
+    <div className="py-3 first:pt-0 last:pb-0">
+      {/* Compact row */}
+      <div className="flex items-start gap-3">
+        <button
+          type="button"
+          onClick={toggleComplete}
+          disabled={toggling}
+          className="mt-0.5 shrink-0 text-slate-300 transition-colors hover:text-emerald-500"
+          aria-label={t("common.completed")}
+        >
+          {done ? (
+            <CheckCircle2 size={18} className="text-emerald-500" />
+          ) : (
+            <Circle size={18} />
+          )}
+        </button>
+
+        <div className="min-w-0 flex-1">
+          <div
+            className={`text-sm font-medium ${
+              done ? "text-slate-400 line-through" : "text-slate-900"
+            }`}
+          >
             {task.description}
           </div>
-          <div className="mt-1.5 flex flex-wrap gap-1.5 text-xs text-slate-500">
-            <span className="rounded-full bg-slate-50 px-2.5 py-0.5">
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-slate-400">
+            <span className="truncate">
               {task.meeting_title || t("common.untitledMeeting")}
             </span>
-            <span className="rounded-full bg-slate-50 px-2.5 py-0.5">
-              {owner || t("common.unassigned")}
-            </span>
-            {dueDate && (
-              <span className="rounded-full bg-slate-50 px-2.5 py-0.5">
-                {formatDate(dueDate, locale)}
-              </span>
-            )}
+            <span>· {owner || t("common.unassigned")}</span>
+            {dueDate && <span>· {formatDate(dueDate, locale)}</span>}
           </div>
         </div>
-        <TaskStatusBadge status={visualStatus} />
+
+        <div className="flex shrink-0 items-center gap-2">
+          <TaskStatusBadge status={visualStatus} />
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            className="text-slate-300 transition-colors hover:text-slate-600"
+            aria-label={t("common.save")}
+          >
+            <ChevronDown
+              size={16}
+              className={`transition-transform ${open ? "rotate-180" : ""}`}
+            />
+          </button>
+        </div>
       </div>
 
-      <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_160px_160px_auto]">
-        <div>
-          <label className="mb-1 block text-xs font-medium text-slate-500">
-            {t("meeting.owner")}
-          </label>
-          <Input
-            value={owner}
-            onChange={(e) => setOwner(e.target.value)}
-            placeholder={t("common.unassigned")}
-          />
+      {/* Expandable editor */}
+      {open && (
+        <div className="mt-3 grid gap-3 ps-7 sm:grid-cols-[1fr_150px_150px_auto]">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">
+              {t("meeting.owner")}
+            </label>
+            <Input
+              value={owner}
+              onChange={(e) => setOwner(e.target.value)}
+              placeholder={t("common.unassigned")}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">
+              {t("meeting.dueDate")}
+            </label>
+            <Input
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">
+              {t("meeting.status")}
+            </label>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value as TaskStatus)}
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
+            >
+              <option value="in_progress">{t("common.inProgress")}</option>
+              <option value="completed">{t("common.completed")}</option>
+            </select>
+          </div>
+          <div className="flex items-end">
+            <Button onClick={save} variant="outline" size="sm" disabled={saving}>
+              {saving && <Loader2 size={14} className="animate-spin" />}
+              {t("common.save")}
+            </Button>
+          </div>
         </div>
-        <div>
-          <label className="mb-1 block text-xs font-medium text-slate-500">
-            {t("meeting.dueDate")}
-          </label>
-          <Input
-            type="date"
-            value={dueDate}
-            onChange={(e) => setDueDate(e.target.value)}
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-xs font-medium text-slate-500">
-            {t("meeting.status")}
-          </label>
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value as TaskStatus)}
-            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
-          >
-            <option value="in_progress">{t("common.inProgress")}</option>
-            <option value="completed">{t("common.completed")}</option>
-          </select>
-        </div>
-        <div className="flex items-end">
-          <Button
-            onClick={save}
-            variant="outline"
-            size="sm"
-            disabled={saving}
-          >
-            {saving && <Loader2 size={14} className="animate-spin" />}
-            {t("common.save")}
-          </Button>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
