@@ -41,8 +41,12 @@
       "whatsappLabel": "WhatsApp number (optional)",
       "whatsappHint": "Include country code, e.g. 9665XXXXXXXX. Leave empty to pick a contact in WhatsApp.",
       "sendWhatsapp": "Send via WhatsApp",
+      "createLink": "Create invite link",
+      "inviteLink": "Invite link",
+      "linkReady": "Link ready — copy it and paste it in WhatsApp.",
       "resend": "Resend",
       "copyLink": "Copy link",
+      "copied": "Copied",
       "linkCopied": "Invite link copied",
       "inviteMessage": "You're invited to join {workspace} on Meeting OS. Open this link and sign in to join the team: {url}"
     },

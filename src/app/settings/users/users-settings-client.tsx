@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { Check, Copy, Loader2, MessageCircle, Trash2, X } from "lucide-react";
+import { Check, Copy, Link2, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import type { WorkspaceInvite, WorkspaceMember, WorkspaceSummary } from "@/lib/supabase/types";
 import { useLanguage } from "@/lib/i18n/context";
 
@@ -17,9 +16,9 @@ export function UsersSettingsClient() {
   const [invites, setInvites] = useState<Invite[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [invitePhone, setInvitePhone] = useState("");
   const [inviteRole, setInviteRole] = useState<"admin" | "member">("member");
-  const [sending, setSending] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newLink, setNewLink] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const load = async () => {
@@ -46,53 +45,36 @@ export function UsersSettingsClient() {
     void load();
   }, []);
 
-  const acceptUrlFor = (token: string) =>
+  const linkFor = (token: string) =>
     typeof window !== "undefined" ? `${window.location.origin}/invite/${token}` : `/invite/${token}`;
 
-  const whatsappUrl = (phone: string | null, token: string) => {
-    const message = t("settings.users.inviteMessage", {
-      workspace: workspace?.name ?? "",
-      url: acceptUrlFor(token),
-    });
-    const target = phone ? phone : "";
-    return `https://wa.me/${target}?text=${encodeURIComponent(message)}`;
-  };
-
-  const sendInvite = async (event: FormEvent<HTMLFormElement>) => {
+  const createLink = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setSending(true);
+    setCreating(true);
     setError(null);
-    // Open a tab synchronously so the popup is tied to the user gesture; we set
-    // its destination once the invite is created.
-    const pending = window.open("", "_blank");
+    setNewLink(null);
     try {
       const res = await fetch("/api/workspaces/invites", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: invitePhone.trim() || undefined, role: inviteRole }),
+        body: JSON.stringify({ role: inviteRole }),
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.message ?? body.error ?? "Failed");
-
-      const waUrl = whatsappUrl(body.phone ?? null, body.token);
-      if (pending) pending.location.href = waUrl;
-      else window.open(waUrl, "_blank");
-
-      setInvitePhone("");
+      setNewLink(linkFor(body.token));
       await load();
     } catch (err) {
-      if (pending) pending.close();
       setError(err instanceof Error ? err.message : "Failed");
     } finally {
-      setSending(false);
+      setCreating(false);
     }
   };
 
-  const copyLink = async (invite: Invite) => {
+  const copy = async (text: string, id: string) => {
     try {
-      await navigator.clipboard.writeText(acceptUrlFor(invite.token));
-      setCopiedId(invite.id);
-      setTimeout(() => setCopiedId((current) => (current === invite.id ? null : current)), 2000);
+      await navigator.clipboard.writeText(text);
+      setCopiedId(id);
+      setTimeout(() => setCopiedId((current) => (current === id ? null : current)), 2000);
     } catch {
       /* clipboard unavailable */
     }
@@ -100,6 +82,7 @@ export function UsersSettingsClient() {
 
   const revokeInvite = async (id: string) => {
     await fetch(`/api/workspaces/invites?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (newLink) setNewLink(null);
     await load();
   };
 
@@ -136,9 +119,7 @@ export function UsersSettingsClient() {
       )}
 
       <div className="rounded-xl border border-slate-200 bg-white p-6">
-        <h2 className="text-lg font-semibold text-slate-900">
-          {t("settings.users.title")}
-        </h2>
+        <h2 className="text-lg font-semibold text-slate-900">{t("settings.users.title")}</h2>
         <p className="mt-1 text-sm text-slate-500">{t("settings.users.description")}</p>
 
         <ul className="mt-5 divide-y divide-slate-100">
@@ -178,19 +159,7 @@ export function UsersSettingsClient() {
       {canManage && (
         <div className="rounded-xl border border-slate-200 bg-white p-6">
           <h2 className="text-lg font-semibold text-slate-900">{t("settings.users.inviteTitle")}</h2>
-          <form onSubmit={sendInvite} className="mt-4 flex flex-wrap items-end gap-3">
-            <div className="min-w-[220px] flex-1">
-              <label className="mb-1.5 block text-xs font-medium text-slate-500">
-                {t("settings.users.whatsappLabel")}
-              </label>
-              <Input
-                type="tel"
-                inputMode="tel"
-                value={invitePhone}
-                onChange={(e) => setInvitePhone(e.target.value)}
-                placeholder="9665XXXXXXXX"
-              />
-            </div>
+          <form onSubmit={createLink} className="mt-4 flex flex-wrap items-end gap-3">
             <div>
               <label className="mb-1.5 block text-xs font-medium text-slate-500">
                 {t("settings.users.roleLabel")}
@@ -204,12 +173,29 @@ export function UsersSettingsClient() {
                 <option value="admin">Admin</option>
               </select>
             </div>
-            <Button type="submit" disabled={sending} className="bg-[#25D366] text-white hover:bg-[#1ebe5d]">
-              {sending ? <Loader2 size={14} className="animate-spin" /> : <MessageCircle size={14} />}
-              {t("settings.users.sendWhatsapp")}
+            <Button type="submit" disabled={creating}>
+              {creating ? <Loader2 size={14} className="animate-spin" /> : <Link2 size={14} />}
+              {t("settings.users.createLink")}
             </Button>
           </form>
-          <p className="mt-2 text-xs text-slate-400">{t("settings.users.whatsappHint")}</p>
+
+          {newLink && (
+            <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+              <div className="text-xs font-medium text-emerald-700">{t("settings.users.linkReady")}</div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <input
+                  readOnly
+                  value={newLink}
+                  onFocus={(e) => e.currentTarget.select()}
+                  className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
+                />
+                <Button type="button" onClick={() => copy(newLink, "new")}>
+                  {copiedId === "new" ? <Check size={14} /> : <Copy size={14} />}
+                  {copiedId === "new" ? t("settings.users.copied") : t("settings.users.copyLink")}
+                </Button>
+              </div>
+            </div>
+          )}
 
           {pendingInvites.length > 0 && (
             <div className="mt-6">
@@ -217,10 +203,8 @@ export function UsersSettingsClient() {
               <ul className="mt-2 divide-y divide-slate-100">
                 {pendingInvites.map((invite) => (
                   <li key={invite.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
-                    <div>
-                      <div className="text-sm font-medium text-slate-900">
-                        {invite.phone ? `+${invite.phone}` : invite.email ?? t("settings.users.inviteTitle")}
-                      </div>
+                    <div className="min-w-0">
+                      <div className="truncate text-sm text-slate-700">{linkFor(invite.token)}</div>
                       <div className="text-xs text-slate-500">
                         {invite.role} · {t("settings.users.expiresOn", {
                           date: new Date(invite.expires_at).toLocaleDateString(),
@@ -228,20 +212,12 @@ export function UsersSettingsClient() {
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <a
-                        href={whatsappUrl(invite.phone, invite.token)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-[#25D366] px-2.5 py-1.5 text-xs font-medium text-white hover:bg-[#1ebe5d]"
-                      >
-                        <MessageCircle size={13} />
-                        {t("settings.users.resend")}
-                      </a>
-                      <Button variant="ghost" size="sm" onClick={() => copyLink(invite)}>
+                      <Button variant="outline" size="sm" onClick={() => copy(linkFor(invite.token), invite.id)}>
                         {copiedId === invite.id ? <Check size={14} /> : <Copy size={14} />}
+                        {copiedId === invite.id ? t("settings.users.copied") : t("settings.users.copyLink")}
                       </Button>
                       <Button variant="ghost" size="sm" onClick={() => revokeInvite(invite.id)}>
-                        <X size={14} />
+                        <Trash2 size={14} />
                       </Button>
                     </div>
                   </li>
