@@ -121,6 +121,12 @@ function MeetingPrintView({ meeting, decisions, tasks }: { meeting: Meeting; dec
   const { t, locale } = useLanguage();
   const dateStr = new Date(meeting.created_at).toLocaleString(locale === "ar" ? "ar-SA" : "en-US");
   const statusLabel = (status: TaskStatus) => (status === "completed" ? t("common.completed") : t("common.inProgress"));
+  const fmtDate = (value: string) =>
+    new Date(value).toLocaleDateString(locale === "ar" ? "ar-SA" : "en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
   const keyPoints = meeting.key_points ?? [];
 
   return (
@@ -163,35 +169,30 @@ function MeetingPrintView({ meeting, decisions, tasks }: { meeting: Meeting; dec
 
       <PrintSection title={t("meeting.tasks")}>
         {tasks.length ? (
-          <div className="space-y-2 text-sm">
-            {tasks.map((task) => (
-              <div key={task.id} className="break-inside-avoid border-b border-slate-200 pb-2">
-                <div className="font-medium">{task.description}</div>
-                <div className="mt-0.5 text-xs text-slate-500">
-                  {t("meeting.owner")}: {task.owner_name || t("common.unassigned")}
-                  {task.due_date ? ` · ${t("meeting.dueDate")}: ${task.due_date}` : ""}
-                  {` · ${t("meeting.status")}: ${statusLabel(task.status)}`}
-                </div>
-              </div>
-            ))}
-          </div>
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr className="border-b border-slate-300 text-xs text-slate-500">
+                <th className="py-1.5 pe-3 text-start font-medium">{t("meeting.description")}</th>
+                <th className="py-1.5 pe-3 text-start font-medium">{t("meeting.owner")}</th>
+                <th className="py-1.5 pe-3 text-start font-medium">{t("meeting.dueDate")}</th>
+                <th className="py-1.5 text-start font-medium">{t("meeting.status")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tasks.map((task) => (
+                <tr key={task.id} className="break-inside-avoid border-b border-slate-100 align-top">
+                  <td className="py-1.5 pe-3">{task.description}</td>
+                  <td className="py-1.5 pe-3 text-slate-600">{task.owner_name || t("common.unassigned")}</td>
+                  <td className="whitespace-nowrap py-1.5 pe-3 text-slate-600">
+                    {task.due_date ? fmtDate(task.due_date) : "—"}
+                  </td>
+                  <td className="whitespace-nowrap py-1.5 text-slate-600">{statusLabel(task.status)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         ) : (
           <p className="text-sm text-slate-500">{t("meeting.noTasks")}</p>
-        )}
-      </PrintSection>
-
-      <PrintSection title={t("meeting.transcript")}>
-        {meeting.transcript_segments?.length ? (
-          <div className="space-y-2 text-sm">
-            {meeting.transcript_segments.map((segment, index) => (
-              <div key={index} className="break-inside-avoid">
-                <span className="font-semibold text-slate-600">{segment.speaker_name || t("recording.speaker", { id: segment.speaker_id })}: </span>
-                <span>{segment.text}</span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="whitespace-pre-wrap text-sm">{meeting.transcript}</p>
         )}
       </PrintSection>
     </div>
